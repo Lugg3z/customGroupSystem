@@ -1,0 +1,6 @@
+name: customGroupSystem
+version: ${project.version}
+main: at.lukas.customGroupSystem
+api-version: 1.21.11
+authors: [Lugges]
+description: Playlegend Bewerbungsphase
