@@ -1,6 +1,9 @@
 name: customGroupSystem
 version: ${project.version}
-main: at.lukas.customGroupSystem
+main: at.lukas.CustomGroupSystem
 api-version: 1.21.11
 authors: [Lugges]
 description: Playlegend Bewerbungsphase
+
+libraries:
+  - com.zaxxer:HikariCP:5.1.0
