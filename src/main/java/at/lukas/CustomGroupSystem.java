@@ -1,7 +1,10 @@
 package at.lukas;
 
+import at.lukas.misc.MotdListener;
+import at.lukas.player.PlayerListener;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.Connection;
@@ -15,6 +18,8 @@ public class CustomGroupSystem extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        saveDefaultConfig();
+
         try {
             connectToDatabase();
             createTablesOnFirstBoot();
@@ -22,6 +27,8 @@ public class CustomGroupSystem extends JavaPlugin {
             logger.severe("Failed to initialize database: " + e.getMessage());
             getServer().getPluginManager().disablePlugin(this);
         }
+
+        registerEventListeners();
     }
 
     @Override
@@ -86,6 +93,13 @@ public class CustomGroupSystem extends JavaPlugin {
 
             logger.info("Database tables initialized successfully.");
         }
+    }
+
+    private void registerEventListeners(){
+        PluginManager pm = getServer().getPluginManager();
+
+        pm.registerEvents(new PlayerListener(), this);
+        pm.registerEvents(new MotdListener(), this);
     }
 
     public Connection getConnection() throws SQLException {
