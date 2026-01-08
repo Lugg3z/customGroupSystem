@@ -1,6 +1,10 @@
 package at.lukas;
 
+import at.lukas.commands.GroupSystemCommand;
+import at.lukas.commands.GroupSystemTabCompleter;
 import at.lukas.misc.MotdListener;
+import at.lukas.player.DatabaseManager;
+import at.lukas.player.PermissionManager;
 import at.lukas.player.PlayerListener;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -10,6 +14,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 public class CustomGroupSystem extends JavaPlugin {
@@ -27,8 +32,18 @@ public class CustomGroupSystem extends JavaPlugin {
             logger.severe("Failed to initialize database: " + e.getMessage());
             getServer().getPluginManager().disablePlugin(this);
         }
+        PermissionManager permissionManager = new PermissionManager();
+        DatabaseManager dbManager = new DatabaseManager();
 
-        registerEventListeners();
+        GroupSystemCommand command = new GroupSystemCommand(permissionManager, dbManager, this);
+        Objects.requireNonNull(getCommand("gs")).setExecutor(command);
+
+        GroupSystemTabCompleter tabCompleter = new GroupSystemTabCompleter(dbManager);
+        Objects.requireNonNull(getCommand("gs")).setTabCompleter(tabCompleter);
+
+        PluginManager pm = getServer().getPluginManager();
+        pm.registerEvents(new PlayerListener(dbManager), this);
+        pm.registerEvents(new MotdListener(getConfig()), this);
     }
 
     @Override
@@ -61,29 +76,29 @@ public class CustomGroupSystem extends JavaPlugin {
 
     private void createTablesOnFirstBoot() throws SQLException {
         String createRolesTable = """
-        CREATE TABLE IF NOT EXISTS roles (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(36) NOT NULL UNIQUE,
-            prefix VARCHAR(8) UNIQUE
-        )
-        """;
+                CREATE TABLE IF NOT EXISTS roles (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(36) NOT NULL UNIQUE,
+                    prefix VARCHAR(8) UNIQUE
+                )
+                """;
 
         String createPlayerRolesTable = """
-        CREATE TABLE IF NOT EXISTS player_roles (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            uuid CHAR(36) NOT NULL,
-            role_id INT NOT NULL,
-            expiry DATETIME NULL,
-            assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT fk_player_roles_role
-                FOREIGN KEY (role_id)
-                REFERENCES roles(id)
-                ON DELETE CASCADE,
-            INDEX idx_player_roles_uuid (uuid),
-            INDEX idx_player_roles_role (role_id),
-            INDEX idx_player_roles_expiry (expiry)
-        )
-        """;
+                CREATE TABLE IF NOT EXISTS player_roles (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    uuid CHAR(36) NOT NULL,
+                    role_id INT NOT NULL,
+                    expiry DATETIME NULL,
+                    assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT fk_player_roles_role
+                        FOREIGN KEY (role_id)
+                        REFERENCES roles(id)
+                        ON DELETE CASCADE,
+                    INDEX idx_player_roles_uuid (uuid),
+                    INDEX idx_player_roles_role (role_id),
+                    INDEX idx_player_roles_expiry (expiry)
+                )
+                """;
 
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
@@ -93,13 +108,6 @@ public class CustomGroupSystem extends JavaPlugin {
 
             logger.info("Database tables initialized successfully.");
         }
-    }
-
-    private void registerEventListeners(){
-        PluginManager pm = getServer().getPluginManager();
-
-        pm.registerEvents(new PlayerListener(), this);
-        pm.registerEvents(new MotdListener(), this);
     }
 
     public Connection getConnection() throws SQLException {

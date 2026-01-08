@@ -1,0 +1,37 @@
+messages:
+  # Help Menu
+  help:
+    header: "§e=== Group System Commands ==="
+    creategroup: "§e/gs creategroup <name> <prefix>"
+    deletegroup: "§e/gs deletegroup <name>"
+    setpermission: "§e/gs setpermission <group> <permission> <true/false>"
+    adduser: "§e/gs adduser <player> <group>"
+
+  # General Messages
+  unknown-subcommand: "§cUnknown subcommand: {subcommand}"
+  no-permission: "§cYou don't have permission!"
+
+  # Create Group Command
+  creategroup:
+    usage: "§eUsage: /gs creategroup <name> <prefix>"
+    too-many-args: "§cOnly 2 arguments allowed!"
+    already-exists: "§cGroup '{group}' already exists!"
+    success: "§aGroup '{group}' created successfully!"
+    error: "§cError creating group: {error}"
+
+  # Delete Group Command
+  deletegroup:
+    usage: "§eUsage: /gs deletegroup <name>"
+    not-found: "§cGroup '{group}' doesn't exist!"
+    failed: "§cGroup '{group}' could not be deleted or not found"
+    success: "§aGroup '{group}' deleted successfully!"
+    error: "§cError deleting group: {error}"
+
+  # Add User Command
+  adduser:
+    usage: "§eUsage: /gs adduser <player> <group>"
+    player-not-found: "§cPlayer '{player}' not found!"
+    group-not-found: "§cGroup '{group}' doesn't exist!"
+    success: "§a{player} has been added to {group}!"
+    success-target: "§aYou've been added to the {group} group!"
+    error: "§cError adding user: {error}"

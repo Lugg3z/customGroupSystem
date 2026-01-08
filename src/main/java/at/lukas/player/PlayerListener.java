@@ -1,5 +1,6 @@
 package at.lukas.player;
 
+import at.lukas.CustomGroupSystem;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -10,33 +11,23 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import static at.lukas.player.PlayerHelper.applyDefaultGroup;
+import static at.lukas.player.PlayerHelper.applyPrefix;
+
 public class PlayerListener implements Listener {
+    private final DatabaseManager dbManager;
+
+    public PlayerListener(DatabaseManager dbManager) {
+        this.dbManager = dbManager;
+    }
+
     @EventHandler
     private void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        applyPrefix(player);
-        setJoinMessage(event, player);
-    }
+        applyDefaultGroup(player, dbManager);
+        applyPrefix(player, dbManager);
 
-    private void applyPrefix(Player player) {
-        //---------------------------------get from database...
-        String prefix = "&4[Test]";
-
-        Component component = LegacyComponentSerializer.legacyAmpersand()
-                .deserialize(prefix)
-                .append(Component.text(' '));
-
-        // getDisplayName und Set sind laut https://jd.papermc.io/paper/1.21.11/org/bukkit/entity/Player.html#displayName()
-        // deprecated in Paper
-        player.displayName(component.append(Component.text(player.getName())));
-        player.playerListName(component.append(Component.text(player.getName())));
-    }
-
-    private void setJoinMessage(PlayerJoinEvent event, Player player) {
-        event.joinMessage(
-                player.displayName()
-                        .append(Component.text(" joined the server", NamedTextColor.GRAY))
-        );
+        event.joinMessage(player.displayName().append(Component.text(" joined the server", NamedTextColor.GRAY)));
     }
 
     @EventHandler

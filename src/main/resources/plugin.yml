@@ -4,6 +4,22 @@ main: at.lukas.CustomGroupSystem
 api-version: 1.21.11
 authors: [Lugges]
 description: Playlegend Bewerbungsphase
+commands:
+  gs:
+    description: Group system commands
+    usage: /gs <subcommand> [args]
+    aliases: [groupsystem, group]
+
+# Nur die Adminpermissions sind hier aufgezählt, Rest soll Datenbank bzw. custom sein
+permissions:
+  groupsystem.admin.creategroup:
+    default: op
+  groupsystem.admin.deletegroup:
+    default: op
+  groupsystem.admin.setpermission:
+    default: op
+  groupsystem.admin.adduser:
+    default: op
 
 libraries:
   - com.zaxxer:HikariCP:5.1.0
