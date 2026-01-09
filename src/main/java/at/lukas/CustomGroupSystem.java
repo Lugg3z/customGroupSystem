@@ -72,7 +72,6 @@ public class CustomGroupSystem extends JavaPlugin {
 
         dataSource = new HikariDataSource(config);
 
-        // Test connection
         try (Connection connection = dataSource.getConnection()) {
             if (connection.isValid(5)) {
                 logger.info("Database connected successfully!");
@@ -81,44 +80,44 @@ public class CustomGroupSystem extends JavaPlugin {
     }
 
     private void createTablesOnFirstBoot() throws SQLException {
-        String createRolesTable = """
-                CREATE TABLE IF NOT EXISTS roles (
+        String createGroupsTable = """
+                CREATE TABLE IF NOT EXISTS group_data (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(36) NOT NULL UNIQUE,
                     prefix VARCHAR(64)
                 )
                 """;
 
-        String createPlayerRolesTable = """
-                CREATE TABLE IF NOT EXISTS player_roles (
+        String createPlayerGroupsTable = """
+                CREATE TABLE IF NOT EXISTS player_groups (
                     uuid CHAR(36) NOT NULL PRIMARY KEY,
-                    role_id INT NOT NULL,
+                    group_id INT NOT NULL,
                     expiry DATETIME NULL,
                     assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    CONSTRAINT fk_player_roles_role
-                        FOREIGN KEY (role_id)
-                        REFERENCES roles(id)
+                    CONSTRAINT fk_player_groups_group
+                        FOREIGN KEY (group_id)
+                        REFERENCES group_data(id)
                         ON DELETE CASCADE,
-                    INDEX idx_player_roles_role (role_id),
-                    INDEX idx_player_roles_expiry (expiry)
+                    INDEX idx_player_groups_group (group_id),
+                    INDEX idx_player_groups_expiry (expiry)
                 )
                 """;
 
-        String insertDefaultRoles = """
-                INSERT IGNORE INTO roles (name, prefix) VALUES
-                ('default', '&7[Member] '),
-                ('vip', '&6[VIP] '),
-                ('admin', '&c[Admin] ')
+        String insertDefaultGroups = """
+                INSERT IGNORE INTO group_data (name, prefix) VALUES
+                ('default', '&7[Member]'),
+                ('vip', '&6[VIP]'),
+                ('admin', '&c[Admin]')
                 """;
 
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
 
-            statement.execute(createRolesTable);
-            statement.execute(createPlayerRolesTable);
-            statement.execute(insertDefaultRoles);
+            statement.execute(createGroupsTable);
+            statement.execute(createPlayerGroupsTable);
+            statement.execute(insertDefaultGroups);
 
-            logger.info("Database tables initialized.");
+            logger.info("Database tables initialized successfully.");
         }
     }
 
@@ -134,10 +133,10 @@ public class CustomGroupSystem extends JavaPlugin {
         permissionManager = new PermissionManager();
 
         try {
-            dbManager.loadAllRolesIntoCache();
-            logger.info("Loaded " + dbManager.getAllGroups().size() + " roles into cache.");
+            dbManager.loadAllGroupsIntoCache();
+            logger.info("Loaded " + dbManager.getAllGroups().size() + " groups into cache.");
         } catch (SQLException e) {
-            logger.warning("Failed to load roles into cache: " + e.getMessage());
+            logger.warning("Failed to load groups into cache: " + e.getMessage());
         }
     }
 

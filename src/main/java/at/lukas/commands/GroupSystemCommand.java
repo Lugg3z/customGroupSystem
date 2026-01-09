@@ -37,13 +37,8 @@ public class GroupSystemCommand implements CommandExecutor {
         loadMessages();
     }
 
-    /**
-     * Loads messages from the messages.yml configuration file
-     */
     private void loadMessages() {
         File messagesFile = new File(plugin.getDataFolder(), "messages.yml");
-
-        // Create the file if it doesn't exist
         if (!messagesFile.exists()) {
             plugin.getDataFolder().mkdirs();
             try (InputStream in = plugin.getResource("messages.yml")) {
@@ -61,13 +56,6 @@ public class GroupSystemCommand implements CommandExecutor {
         messages = YamlConfiguration.loadConfiguration(messagesFile);
     }
 
-    /**
-     * Gets a message from the config and replaces placeholders
-     *
-     * @param path         The config path to the message
-     * @param placeholders Key-value pairs for placeholder replacement
-     * @return The formatted message
-     */
     private String getMessage(String path, Object... placeholders) {
         String message = messages.getString("messages." + path, "§cMessage not found: " + path);
 

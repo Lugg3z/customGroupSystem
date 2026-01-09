@@ -28,10 +28,10 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
 
         try {
-            dbManager.loadPlayerRole(player.getUniqueId());
+            dbManager.loadPlayerGroup(player.getUniqueId());
             applyPrefix(player, dbManager);
         } catch (SQLException e) {
-            player.sendMessage("§cError loading your role data!");
+            player.sendMessage("§cError loading your group data!");
             e.printStackTrace();
         }
 

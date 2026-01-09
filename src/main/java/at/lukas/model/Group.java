@@ -5,7 +5,7 @@ import lombok.Data;
 
 @Data
 @AllArgsConstructor
-public class Role {
+public class Group {
     private int id;
     private String name;
     private String prefix;

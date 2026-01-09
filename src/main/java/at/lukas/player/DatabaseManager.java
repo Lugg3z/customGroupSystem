@@ -1,7 +1,7 @@
 package at.lukas.player;
 
 import at.lukas.CustomGroupSystem;
-import at.lukas.model.Role;
+import at.lukas.model.Group;
 import org.bukkit.entity.Player;
 
 import java.sql.Connection;
@@ -13,54 +13,54 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DatabaseManager {
     private final CustomGroupSystem plugin;
-    private final Map<String, Role> roleCache = new ConcurrentHashMap<>();
+    private final Map<String, Group> groupCache = new ConcurrentHashMap<>();
 
-    private final Map<UUID, String> playerRoleCache = new ConcurrentHashMap<>();
+    private final Map<UUID, String> playerGroupCache = new ConcurrentHashMap<>();
 
     public DatabaseManager(CustomGroupSystem plugin) {
         this.plugin = plugin;
     }
 
-    public void loadAllRolesIntoCache() throws SQLException {
-        String query = "SELECT id, name, prefix FROM roles";
+    public void loadAllGroupsIntoCache() throws SQLException {
+        String query = "SELECT id, name, prefix FROM group_data";
 
         try (Connection conn = plugin.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query);
              ResultSet rs = stmt.executeQuery()) {
 
-            roleCache.clear();
+            groupCache.clear();
 
             while (rs.next()) {
-                Role role = new Role(
+                Group group = new Group(
                         rs.getInt("id"),
                         rs.getString("name"),
                         rs.getString("prefix")
                 );
-                roleCache.put(role.getName().toLowerCase(), role);
+                groupCache.put(group.getName().toLowerCase(), group);
             }
 
-            plugin.getLogger().info("Loaded " + roleCache.size() + " roles into cache");
+            plugin.getLogger().info("Loaded " + groupCache.size() + " groups into cache");
         }
     }
 
     public boolean groupExists(String groupName) {
-        return roleCache.containsKey(groupName.toLowerCase());
+        return groupCache.containsKey(groupName.toLowerCase());
     }
 
     public List<String> getAllGroups() {
-        return new ArrayList<>(roleCache.keySet());
+        return new ArrayList<>(groupCache.keySet());
     }
 
     public String getPrefix(String groupName) {
-        Role role = roleCache.get(groupName.toLowerCase());
-        if (role == null) return "&7";
+        Group group = groupCache.get(groupName.toLowerCase());
+        if (group == null) return "&7";
 
-        String prefix = role.getPrefix();
+        String prefix = group.getPrefix();
         return prefix != null ? prefix : "&7";
     }
 
     public void createGroup(String name, String prefix) throws SQLException {
-        String query = "INSERT INTO roles (name, prefix) VALUES (?, ?)";
+        String query = "INSERT INTO group_data (name, prefix) VALUES (?, ?)";
 
         try (Connection conn = plugin.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query, PreparedStatement.RETURN_GENERATED_KEYS)) {
@@ -73,10 +73,10 @@ public class DatabaseManager {
             if (rs.next()) {
                 int id = rs.getInt(1);
 
-                Role role = new Role(id, name.toLowerCase(), prefix);
-                roleCache.put(name.toLowerCase(), role);
+                Group group = new Group(id, name.toLowerCase(), prefix);
+                groupCache.put(name.toLowerCase(), group);
 
-                plugin.getLogger().info("Created role: " + name);
+                plugin.getLogger().info("Created group: " + name);
             }
         }
     }
@@ -87,17 +87,17 @@ public class DatabaseManager {
         }
 
         if (groupName.equalsIgnoreCase("default")) {
-            throw new IllegalArgumentException("Cannot delete the default role!");
+            throw new IllegalArgumentException("Cannot delete the default group!");
         }
 
         List<UUID> affectedPlayers = new ArrayList<>();
-        for (Map.Entry<UUID, String> entry : playerRoleCache.entrySet()) {
+        for (Map.Entry<UUID, String> entry : playerGroupCache.entrySet()) {
             if (entry.getValue().equalsIgnoreCase(groupName)) {
                 affectedPlayers.add(entry.getKey());
             }
         }
 
-        String query = "DELETE FROM roles WHERE name = ?";
+        String query = "DELETE FROM group_data WHERE name = ?";
 
         try (Connection conn = plugin.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -106,7 +106,7 @@ public class DatabaseManager {
             int affected = stmt.executeUpdate();
 
             if (affected > 0) {
-                roleCache.remove(groupName.toLowerCase());
+                groupCache.remove(groupName.toLowerCase());
 
                 for (UUID uuid : affectedPlayers) {
                     try {
@@ -121,7 +121,7 @@ public class DatabaseManager {
                     }
                 }
 
-                plugin.getLogger().info("Deleted role: " + groupName + " (" + affectedPlayers.size() + " players reassigned to default)");
+                plugin.getLogger().info("Deleted group: " + groupName + " (" + affectedPlayers.size() + " players reassigned to default)");
                 return true;
             }
 
@@ -129,12 +129,12 @@ public class DatabaseManager {
         }
     }
 
-    public void loadPlayerRole(UUID uuid) throws SQLException {
+    public void loadPlayerGroup(UUID uuid) throws SQLException {
         String query = """
-                SELECT r.name 
-                FROM player_roles pr
-                JOIN roles r ON pr.role_id = r.id
-                WHERE pr.uuid = ?
+                SELECT g.name
+                FROM player_groups pg
+                JOIN group_data g ON pg.group_id = g.id
+                WHERE pg.uuid = ?
                 """;
 
         try (Connection conn = plugin.getConnection();
@@ -144,46 +144,46 @@ public class DatabaseManager {
             ResultSet rs = stmt.executeQuery();
 
             if (rs.next()) {
-                String roleName = rs.getString("name");
-                playerRoleCache.put(uuid, roleName.toLowerCase());
+                String groupName = rs.getString("name");
+                playerGroupCache.put(uuid, groupName.toLowerCase());
             } else {
                 setUserGroup(uuid, "default");
             }
         }
     }
 
-    public String getPlayerRole(UUID uuid) {
-        if (playerRoleCache.containsKey(uuid)) {
-            return playerRoleCache.get(uuid);
+    public String getPlayerGroup(UUID uuid) {
+        if (playerGroupCache.containsKey(uuid)) {
+            return playerGroupCache.get(uuid);
         }
 
         try {
-            loadPlayerRole(uuid);
-            return playerRoleCache.getOrDefault(uuid, "default");
+            loadPlayerGroup(uuid);
+            return playerGroupCache.getOrDefault(uuid, "default");
         } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to load player role: " + e.getMessage());
+            plugin.getLogger().severe("Failed to load player group: " + e.getMessage());
             return "default";
         }
     }
 
     public String getPlayerPrefix(UUID uuid) {
-        String roleName = getPlayerRole(uuid);
-        return getPrefix(roleName);
+        String groupName = getPlayerGroup(uuid);
+        return getPrefix(groupName);
     }
 
-    public boolean playerHasRole(UUID uuid) {
-        return playerRoleCache.containsKey(uuid);
+    public boolean playerHasGroup(UUID uuid) {
+        return playerGroupCache.containsKey(uuid);
     }
 
     public void setUserGroup(UUID uuid, String groupName) throws SQLException {
         if (!groupExists(groupName)) {
-            throw new IllegalArgumentException("Role does not exist: " + groupName);
+            throw new IllegalArgumentException("Group does not exist: " + groupName);
         }
 
-        Role role = roleCache.get(groupName.toLowerCase());
+        Group group = groupCache.get(groupName.toLowerCase());
 
         String query = """
-                REPLACE INTO player_roles (uuid, role_id, assigned_at)
+                REPLACE INTO player_groups (uuid, group_id, assigned_at)
                 VALUES (?, ?, NOW())
                 """;
 
@@ -191,29 +191,29 @@ public class DatabaseManager {
              PreparedStatement stmt = conn.prepareStatement(query)) {
 
             stmt.setString(1, uuid.toString());
-            stmt.setInt(2, role.getId());
+            stmt.setInt(2, group.getId());
             stmt.executeUpdate();
 
-            playerRoleCache.put(uuid, groupName.toLowerCase());
+            playerGroupCache.put(uuid, groupName.toLowerCase());
 
-            plugin.getLogger().info("Set role for " + uuid + " to " + groupName);
+            plugin.getLogger().info("Set group for " + uuid + " to " + groupName);
         }
     }
 
     public void unloadPlayer(UUID uuid) {
-        playerRoleCache.remove(uuid);
+        playerGroupCache.remove(uuid);
     }
 
     public Set<UUID> getCachedPlayers() {
-        return new HashSet<>(playerRoleCache.keySet());
+        return new HashSet<>(playerGroupCache.keySet());
     }
 
     public void clearPlayerCache() {
-        playerRoleCache.clear();
+        playerGroupCache.clear();
     }
 
     public String getCacheStats() {
-        return String.format("Roles cached: %d, Players cached: %d",
-                roleCache.size(), playerRoleCache.size());
+        return String.format("Groups cached: %d, Players cached: %d",
+                groupCache.size(), playerGroupCache.size());
     }
 }
