@@ -20,37 +20,42 @@ import java.util.logging.Logger;
 public class CustomGroupSystem extends JavaPlugin {
     private final Logger logger = getLogger();
     private HikariDataSource dataSource;
+    private DatabaseManager dbManager;
+    private PermissionManager permissionManager;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
-        try {
-            connectToDatabase();
-            createTablesOnFirstBoot();
-        } catch (SQLException e) {
-            logger.severe("Failed to initialize database: " + e.getMessage());
+        if (!initializeDatabase()) {
+            logger.severe("Failed to initialize database - disabling plugin");
             getServer().getPluginManager().disablePlugin(this);
+            return;
         }
-        PermissionManager permissionManager = new PermissionManager();
-        DatabaseManager dbManager = new DatabaseManager();
 
-        GroupSystemCommand command = new GroupSystemCommand(permissionManager, dbManager, this);
-        Objects.requireNonNull(getCommand("gs")).setExecutor(command);
+        initializeManagers();
 
-        GroupSystemTabCompleter tabCompleter = new GroupSystemTabCompleter(dbManager);
-        Objects.requireNonNull(getCommand("gs")).setTabCompleter(tabCompleter);
+        registerCommands(permissionManager);
 
-        PluginManager pm = getServer().getPluginManager();
-        pm.registerEvents(new PlayerListener(dbManager), this);
-        pm.registerEvents(new MotdListener(getConfig()), this);
+        registerEvents();
+
+        logger.info("CustomGroupSystem enabled successfully!");
     }
 
     @Override
     public void onDisable() {
-        if (dataSource != null && !dataSource.isClosed()) {
-            dataSource.close();
-            logger.info("Database connection pool closed.");
+        closeDatabase();
+        logger.info("CustomGroupSystem disabled.");
+    }
+
+    private boolean initializeDatabase() {
+        try {
+            connectToDatabase();
+            createTablesOnFirstBoot();
+            return true;
+        } catch (SQLException e) {
+            logger.severe("Database initialization failed: " + e.getMessage());
+            return false;
         }
     }
 
@@ -67,9 +72,10 @@ public class CustomGroupSystem extends JavaPlugin {
 
         dataSource = new HikariDataSource(config);
 
+        // Test connection
         try (Connection connection = dataSource.getConnection()) {
             if (connection.isValid(5)) {
-                logger.info("Successfully connected to database!");
+                logger.info("Database connected successfully!");
             }
         }
     }
@@ -79,14 +85,13 @@ public class CustomGroupSystem extends JavaPlugin {
                 CREATE TABLE IF NOT EXISTS roles (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(36) NOT NULL UNIQUE,
-                    prefix VARCHAR(8) UNIQUE
+                    prefix VARCHAR(64)
                 )
                 """;
 
         String createPlayerRolesTable = """
                 CREATE TABLE IF NOT EXISTS player_roles (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    uuid CHAR(36) NOT NULL,
+                    uuid CHAR(36) NOT NULL PRIMARY KEY,
                     role_id INT NOT NULL,
                     expiry DATETIME NULL,
                     assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -94,10 +99,16 @@ public class CustomGroupSystem extends JavaPlugin {
                         FOREIGN KEY (role_id)
                         REFERENCES roles(id)
                         ON DELETE CASCADE,
-                    INDEX idx_player_roles_uuid (uuid),
                     INDEX idx_player_roles_role (role_id),
                     INDEX idx_player_roles_expiry (expiry)
                 )
+                """;
+
+        String insertDefaultRoles = """
+                INSERT IGNORE INTO roles (name, prefix) VALUES
+                ('default', '&7[Member] '),
+                ('vip', '&6[VIP] '),
+                ('admin', '&c[Admin] ')
                 """;
 
         try (Connection connection = dataSource.getConnection();
@@ -105,12 +116,55 @@ public class CustomGroupSystem extends JavaPlugin {
 
             statement.execute(createRolesTable);
             statement.execute(createPlayerRolesTable);
+            statement.execute(insertDefaultRoles);
 
-            logger.info("Database tables initialized successfully.");
+            logger.info("Database tables initialized.");
         }
+    }
+
+    private void closeDatabase() {
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
+            logger.info("Database connection closed.");
+        }
+    }
+
+    private void initializeManagers() {
+        dbManager = new DatabaseManager(this);
+        permissionManager = new PermissionManager();
+
+        try {
+            dbManager.loadAllRolesIntoCache();
+            logger.info("Loaded " + dbManager.getAllGroups().size() + " roles into cache.");
+        } catch (SQLException e) {
+            logger.warning("Failed to load roles into cache: " + e.getMessage());
+        }
+    }
+
+    private void registerCommands(PermissionManager permissionManager) {
+        GroupSystemCommand command = new GroupSystemCommand(permissionManager, dbManager, this);
+        GroupSystemTabCompleter tabCompleter = new GroupSystemTabCompleter(dbManager);
+
+        Objects.requireNonNull(getCommand("gs")).setExecutor(command);
+        Objects.requireNonNull(getCommand("gs")).setTabCompleter(tabCompleter);
+
+        logger.info("Commands registered.");
+    }
+
+    private void registerEvents() {
+        PluginManager pm = getServer().getPluginManager();
+
+        pm.registerEvents(new PlayerListener(dbManager, logger), this);
+        pm.registerEvents(new MotdListener(getConfig()), this);
+
+        logger.info("Event listeners registered.");
     }
 
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
+    }
+
+    public DatabaseManager getDatabaseManager() {
+        return dbManager;
     }
 }
