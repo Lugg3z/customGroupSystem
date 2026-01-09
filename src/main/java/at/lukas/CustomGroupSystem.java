@@ -3,6 +3,7 @@ package at.lukas;
 import at.lukas.commands.GroupSystemCommand;
 import at.lukas.commands.GroupSystemTabCompleter;
 import at.lukas.misc.MotdListener;
+import at.lukas.misc.SignListener;
 import at.lukas.player.DatabaseManager;
 import at.lukas.player.PermissionManager;
 import at.lukas.player.PlayerListener;
@@ -155,7 +156,7 @@ public class CustomGroupSystem extends JavaPlugin {
 
         pm.registerEvents(new PlayerListener(dbManager, logger), this);
         pm.registerEvents(new MotdListener(getConfig()), this);
-
+        pm.registerEvents(new SignListener(dbManager), this);
         logger.info("Event listeners registered.");
     }
 
