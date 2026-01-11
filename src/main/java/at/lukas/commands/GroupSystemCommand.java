@@ -1,8 +1,8 @@
 package at.lukas.commands;
 
-import at.lukas.misc.DurationParser;
 import at.lukas.manager.DatabaseManager;
 import at.lukas.manager.PermissionManager;
+import at.lukas.misc.DurationParser;
 import at.lukas.misc.PlayerHelper;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -83,6 +83,7 @@ public class GroupSystemCommand implements CommandExecutor {
             sender.sendMessage(getMessage("help.setpermission"));
             sender.sendMessage(getMessage("help.adduser"));
             sender.sendMessage(getMessage("help.playerinfo"));
+            sender.sendMessage(getMessage("help.setpermission"));
             return true;
         }
 
@@ -92,6 +93,8 @@ public class GroupSystemCommand implements CommandExecutor {
             case "deletegroup" -> handleDeleteGroup(sender, args);
             case "adduser" -> handleAddUser(sender, args);
             case "playerinfo", "pinfo" -> handlePlayerInfo(sender, args);
+            case "setpermission", "setperm" -> handleSetPermission(sender, args);
+            case "listpermissions", "listperms" -> handleListPermissions(sender, args);
             default -> {
                 sender.sendMessage(getMessage("unknown-subcommand", "subcommand", subcommand));
                 yield true;
@@ -159,6 +162,19 @@ public class GroupSystemCommand implements CommandExecutor {
                 sender.sendMessage(getMessage("deletegroup.failed", "group", groupName));
             } else {
                 sender.sendMessage(getMessage("deletegroup.success", "group", groupName));
+
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    for (Player player : plugin.getServer().getOnlinePlayers()) {
+                        String playerGroup = dbManager.getPlayerGroup(player.getUniqueId());
+                        if (groupName.equalsIgnoreCase(playerGroup)) {
+                            dbManager.setUserGroup(player.getUniqueId(), "default", null).thenRun(() -> {
+                                permManager.applyPermissions(player);
+                                player.sendMessage("§eYour group was deleted. You are now in the default group.");
+                            });
+                        }
+                    }
+                    permManager.refreshPlayersInGroup("default");
+                });
             }
         }).exceptionally(e -> {
             sender.sendMessage(getMessage("deletegroup.error", "error", e.getMessage()));
@@ -238,8 +254,11 @@ public class GroupSystemCommand implements CommandExecutor {
                 sender.sendMessage(getMessage("adduser.expires-at", "date", date));
             }
 
-            if (finalTarget != null) {
-                PlayerHelper.applyPrefix(finalTarget, dbManager);
+            if (finalTarget != null && finalTarget.isOnline()) {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    PlayerHelper.applyPrefix(finalTarget, dbManager);
+                    permManager.applyPermissions(finalTarget);
+                });
             } else {
                 sender.sendMessage(getMessage("adduser.player-offline"));
             }
@@ -319,5 +338,142 @@ public class GroupSystemCommand implements CommandExecutor {
 
         return true;
     }
-}
 
+    private boolean handleSetPermission(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("groupsystem.admin.setpermission")) {
+            sender.sendMessage(getMessage("no-permission"));
+            return true;
+        }
+
+        if (args.length < 4) {
+            sender.sendMessage(getMessage("setpermission.usage"));
+            return true;
+        }
+
+        String groupName = args[1].toLowerCase();
+        String permission = args[2];
+        String action = args[3].toLowerCase();
+
+        if (!action.equals("true") && !action.equals("false")) {
+            sender.sendMessage(getMessage("setpermission.invalid-action"));
+            return true;
+        }
+
+        boolean add = action.equals("true");
+
+        if (!dbManager.groupExists(groupName)) {
+            sender.sendMessage(getMessage("setpermission.group-not-found", "group", groupName));
+            return true;
+        }
+
+        if (add) {
+            dbManager.addGroupPermission(groupName, permission).thenRun(() -> {
+                sender.sendMessage(getMessage("setpermission.added",
+                        "permission", permission,
+                        "group", groupName));
+
+                // Log for debugging
+                plugin.getLogger().info("Starting permission refresh for group: " + groupName);
+
+                // Refresh on main thread with delay to ensure DB write is complete
+                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                    int refreshed = 0;
+                    for (Player player : plugin.getServer().getOnlinePlayers()) {
+                        String playerGroup = dbManager.getPlayerGroup(player.getUniqueId());
+                        plugin.getLogger().info("Player " + player.getName() + " is in group: " + playerGroup);
+
+                        if (groupName.equalsIgnoreCase(playerGroup)) {
+                            plugin.getLogger().info("Refreshing permissions for: " + player.getName());
+                            permManager.applyPermissions(player);
+                            refreshed++;
+                        }
+                    }
+                    plugin.getLogger().info("Refreshed " + refreshed + " player(s) in group " + groupName);
+                }, 10L); // 0.5 second delay
+
+            }).exceptionally(e -> {
+                sender.sendMessage(getMessage("setpermission.error", "error", e.getMessage()));
+                logger.severe("Error adding permission: " + e.getMessage());
+                return null;
+            });
+
+        } else {
+            dbManager.removeGroupPermission(groupName, permission).thenAccept(success -> {
+                if (success) {
+                    sender.sendMessage(getMessage("setpermission.removed",
+                            "permission", permission,
+                            "group", groupName));
+
+                    plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                        for (Player player : plugin.getServer().getOnlinePlayers()) {
+                            String playerGroup = dbManager.getPlayerGroup(player.getUniqueId());
+                            if (groupName.equalsIgnoreCase(playerGroup)) {
+                                permManager.applyPermissions(player);
+                            }
+                        }
+                    }, 10L);
+                } else {
+                    sender.sendMessage(getMessage("setpermission.not-found",
+                            "permission", permission,
+                            "group", groupName));
+                }
+
+            }).exceptionally(e -> {
+                sender.sendMessage(getMessage("setpermission.error", "error", e.getMessage()));
+                logger.severe("Error removing permission: " + e.getMessage());
+                return null;
+            });
+        }
+
+        return true;
+    }
+
+    private boolean handleListPermissions(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("groupsystem.admin.setpermission")) {
+            sender.sendMessage(getMessage("no-permission"));
+            return true;
+        }
+
+        if (args.length < 2) {
+            sender.sendMessage(getMessage("listpermissions.usage"));
+            return true;
+        }
+
+        String groupName = args[1].toLowerCase();
+
+        if (!dbManager.groupExists(groupName)) {
+            sender.sendMessage(getMessage("listpermissions.group-not-found", "group", groupName));
+            return true;
+        }
+
+        dbManager.getGroupPermissions(groupName).thenAccept(permissions -> {
+            sender.sendMessage(getMessage("listpermissions.header", "group", groupName));
+
+            if (permissions.isEmpty()) {
+                sender.sendMessage(getMessage("listpermissions.none"));
+            } else {
+                for (String perm : permissions) {
+                    sender.sendMessage("§7- §f" + perm);
+                }
+            }
+
+        }).exceptionally(e -> {
+            sender.sendMessage(getMessage("listpermissions.error", "error", e.getMessage()));
+            logger.severe("Error listing permissions: " + e.getMessage());
+            return null;
+        });
+
+        return true;
+    }
+
+    private void refreshGroupPlayers(String groupName) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            for (Player player : plugin.getServer().getOnlinePlayers()) {
+                String playerGroup = dbManager.getPlayerGroup(player.getUniqueId());
+                if (groupName.equalsIgnoreCase(playerGroup)) {
+                    permManager.applyPermissions(player);
+                }
+            }
+        });
+    }
+}

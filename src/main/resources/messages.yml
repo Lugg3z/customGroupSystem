@@ -4,9 +4,10 @@ messages:
     header: "§e=== Group System Commands ==="
     creategroup: "§e/gs creategroup <n> <prefix>"
     deletegroup: "§e/gs deletegroup <n>"
-    setpermission: "§e/gs setpermission <group> <permission> <true/false>"
     adduser: "§e/gs adduser <player> <group> [duration]"
     playerinfo: "§e/gs playerinfo <player> - Check player's group and expiry"
+    setpermission: "§e/gs setpermission <group> <permission> <true/false>"
+    listpermissions: "§e/gs listpermissions <group> - List group permissions"
 
   # General Messages
   unknown-subcommand: "§cUnknown subcommand: {subcommand}"
@@ -57,3 +58,18 @@ messages:
     status-online: "§7Status: §aOnline"
     status-offline: "§7Status: §7Offline"
     error: "§cError getting player info: {error}"
+
+  setpermission:
+    usage: "§eUsage: /gs setpermission <group> <permission> <true/false>"
+    invalid-action: "§cAction must be 'true' or 'false'!"
+    group-not-found: "§cGroup '{group}' doesn't exist!"
+    added: "§aPermission '{permission}' added to group '{group}'!"
+    removed: "§aPermission '{permission}' removed from group '{group}'!"
+    not-found: "§cGroup '{group}' doesn't have permission '{permission}'!"
+
+  listpermissions:
+    usage: "§eUsage: /gs listpermissions <group>"
+    group-not-found: "§cGroup '{group}' doesn't exist!"
+    header: "§6=== Permissions for {group} ==="
+    none: "§7No permissions set"
+    error: "§cError: {error}"

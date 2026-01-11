@@ -1,15 +1,5 @@
 # CustomGroupSystem
-
-## 📋 Features
-
-- **Gruppenverwaltung** - Erstelle und verwalte unbegrenzt viele Gruppen
-- **Temporäre Gruppen** - Weise Spielern Gruppen für eine bestimmte Zeit zu
-- **Prefix-System** - Zeige Gruppenprefixe im Chat und auf Schildern
-- **Schilder-Platzhalter** - Zeige Spielernamen mit Prefixen auf Schildern
-- **Anpassbare Nachrichten** - Alle Texte über messages.yml editierbar
-
 ---
-
 ## 📦 Installation
 
 ### 1. Requirements
@@ -29,7 +19,6 @@
 ## ⚙️ Konfiguration
 
 ### config.yml
-
 ```yaml
 # MySQL Datenbankverbindung
 database:
@@ -47,7 +36,6 @@ database:
 ```
 
 ### MySQL Datenbank einrichten
-
 ```sql
 -- 1. Datenbank erstellen
 CREATE DATABASE minecraft;
@@ -63,7 +51,6 @@ FLUSH PRIVILEGES;
 ### messages.yml
 
 Alle Nachrichten können angepasst werden:
-
 ```yaml
 messages:
   help:
@@ -88,6 +75,10 @@ messages:
 | `/gs creategroup <name> <prefix>` | Gruppe erstellen | `groupsystem.admin.creategroup` |
 | `/gs deletegroup <name>` | Gruppe löschen | `groupsystem.admin.deletegroup` |
 | `/gs adduser <player> <group> [duration]` | Spieler zu Gruppe hinzufügen | `groupsystem.admin.adduser` |
+| `/gs setpermission <group> <permission> <true/false>` | Permission hinzufügen/entfernen | `groupsystem.admin.setpermission` |
+| `/gs setperm <group> <permission> <true/false>` | Alias für setpermission | `groupsystem.admin.setpermission` |
+| `/gs listpermissions <group>` | Alle Permissions einer Gruppe anzeigen | `groupsystem.admin.listpermissions` |
+| `/gs listperms <group>` | Alias für listpermissions | `groupsystem.admin.listpermissions` |
 | `/gs playerinfo <player>` | Gruppeninfo anzeigen | `groupsystem.admin.playerinfo` |
 | `/gs pinfo <player>` | Alias für playerinfo | `groupsystem.admin.playerinfo` |
 
@@ -96,7 +87,6 @@ messages:
 ## 📝 Command Beispiele
 
 ### Gruppe erstellen
-
 ```bash
 # Syntax: /gs creategroup <name> <prefix>
 /gs creategroup vip &6[VIP]&r
@@ -111,7 +101,6 @@ messages:
 ### Spieler zu Gruppe hinzufügen
 
 #### Permanent
-
 ```bash
 # Syntax: /gs adduser <player> <group>
 /gs adduser Steve vip
@@ -121,7 +110,6 @@ messages:
 ```
 
 #### Temporär
-
 ```bash
 # Syntax: /gs adduser <player> <group> <duration>
 
@@ -153,8 +141,75 @@ messages:
 
 ---
 
-### Spieler-Info anzeigen
+## 🔐 Berechtigungssystem
 
+### Permission zu Gruppe hinzufügen
+```bash
+# Syntax: /gs setpermission <group> <permission> true
+/gs setpermission vip essentials.fly true
+/gs setpermission admin minecraft.command.gamemode true
+
+# Kurze Version:
+/gs setperm vip essentials.heal true
+```
+
+**Ergebnis:**
+- Permission wird zur Gruppe hinzugefügt
+- Alle Spieler in dieser Gruppe erhalten die Permission sofort
+- Neue Spieler in der Gruppe erhalten sie automatisch beim Join
+
+---
+
+### Permission von Gruppe entfernen
+```bash
+# Syntax: /gs setpermission <group> <permission> false
+/gs setpermission vip essentials.fly false
+/gs setperm admin worldedit.* false
+```
+
+**Ergebnis:**
+- Permission wird von der Gruppe entfernt
+- Alle Spieler in dieser Gruppe verlieren die Permission sofort
+
+---
+
+### Alle Permissions einer Gruppe anzeigen
+```bash
+# Syntax: /gs listpermissions <group>
+/gs listpermissions vip
+
+# Ausgabe:
+# === Permissions for vip ===
+# - essentials.fly
+# - essentials.heal
+# - essentials.home
+
+```
+
+---
+
+### Wildcard-Permissions
+
+Wildcards geben alle Permissions unter einem bestimmten Präfix:
+```bash
+# Alle Minecraft Befehle
+/gs setperm admin minecraft.command.* true
+
+# Alle Essentials Permissions
+/gs setperm vip essentials.* true
+
+# Alle WorldEdit Permissions
+/gs setperm builder worldedit.* true
+
+# ALLE Permissions (Vorsicht!)
+/gs setperm owner * true
+
+# Alle CustomGroupSystem Admin-Befehle
+/gs setperm moderator groupsystem.admin.* true
+```
+---
+
+### Spieler-Info anzeigen
 ```bash
 # Syntax: /gs playerinfo <player>
 /gs playerinfo Steve
@@ -168,7 +223,6 @@ messages:
 # Expires: 2026-01-17 15:30:00
 # Status: Online
 ```
-
 ```bash
 # Kurze Version
 /gs pinfo Steve
@@ -177,12 +231,12 @@ messages:
 ---
 
 ### Gruppe löschen
-
 ```bash
 # Syntax: /gs deletegroup <name>
 /gs deletegroup vip
 
 # Alle Spieler in dieser Gruppe werden automatisch zu "default"
+# Ihre Permissions werden automatisch aktualisiert
 ```
 
 ---
@@ -244,6 +298,21 @@ Zeile 4:
 
 ---
 
+## 🗄️ Datenbank-Struktur
+
+Das Plugin erstellt automatisch 3 Tabellen:
+
+### `group_data`
+Speichert alle Gruppen mit ihren Prefixen.
+
+### `player_groups`
+Speichert welcher Spieler welche Gruppe hat und wann sie abläuft.
+
+### `group_permissions`
+Speichert welche Permissions jede Gruppe hat.
+
+---
+
 ### Standard-Gruppen
 
 Beim ersten Start werden automatisch erstellt:
@@ -253,8 +322,48 @@ Beim ersten Start werden automatisch erstellt:
 
 ---
 
-## 📁 Dateistruktur
+## 🔐 Plugin Permissions
 
+Diese Permissions steuern, wer die Plugin-Befehle verwenden kann:
+```yaml
+permissions:
+  groupsystem.admin.creategroup:
+    description: Allows creating new groups
+    default: op
+
+  groupsystem.admin.deletegroup:
+    description: Allows deleting groups
+    default: op
+
+  groupsystem.admin.setpermission:
+    description: Allows setting group permissions
+    default: op
+
+  groupsystem.admin.listpermissions:
+    description: Allows listing group permissions
+    default: op
+
+  groupsystem.admin.adduser:
+    description: Allows adding users to groups
+    default: op
+
+  groupsystem.admin.playerinfo:
+    description: Allows checking player information
+    default: true  # Jeder kann Spielerinfos sehen
+```
+
+---
+
+## ⏱️ Temporäre Gruppen
+
+### Automatisches Ablaufen
+
+- Alle 10 Sekunden prüft das Plugin auf abgelaufene Gruppen
+- Spieler werden automatisch zu "default" verschoben
+- Permissions werden automatisch aktualisiert
+- Keine Benachrichtigung an den Spieler (still)
+
+## 📁 Dateistruktur
 ```
 plugins/
 └── CustomGroupSystem/

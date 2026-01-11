@@ -322,7 +322,7 @@ public class DatabaseManager {
         Player player = plugin.getServer().getPlayer(playerUuid);
         if (player != null && player.isOnline()) {
             plugin.getServer().getScheduler().runTask(plugin, () ->
-                PlayerHelper.applyPrefix(player, this));
+                    PlayerHelper.applyPrefix(player, this));
         }
     }
 
@@ -352,6 +352,186 @@ public class DatabaseManager {
         }
 
         return expiredPlayerUuids;
+    }
+
+    public CompletableFuture<Void> addGroupPermission(String groupName, String permission) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                if (!groupExists(groupName)) {
+                    throw new IllegalArgumentException("Group does not exist: " + groupName);
+                }
+
+                Group group = groupCache.get(groupName.toLowerCase());
+
+                String query = """
+                        INSERT INTO group_permissions (group_id, permission)
+                        VALUES (?, ?)
+                        ON DUPLICATE KEY UPDATE permission = VALUES(permission)
+                        """;
+
+                try (Connection conn = plugin.getConnection();
+                     PreparedStatement stmt = conn.prepareStatement(query)) {
+
+                    stmt.setInt(1, group.getId());
+                    stmt.setString(2, permission);
+                    stmt.executeUpdate();
+
+                    plugin.getLogger().info("Added permission '" + permission + "' to group '" + groupName + "'");
+                }
+
+            } catch (SQLException e) {
+                throw new RuntimeException("Failed to add permission", e);
+            }
+        }, executorService);
+    }
+
+    public CompletableFuture<Boolean> removeGroupPermission(String groupName, String permission) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (!groupExists(groupName)) {
+                    return false;
+                }
+
+                Group group = groupCache.get(groupName.toLowerCase());
+
+                String query = """
+                        DELETE FROM group_permissions
+                        WHERE group_id = ? AND permission = ?
+                        """;
+
+                try (Connection conn = plugin.getConnection();
+                     PreparedStatement stmt = conn.prepareStatement(query)) {
+
+                    stmt.setInt(1, group.getId());
+                    stmt.setString(2, permission);
+                    int affected = stmt.executeUpdate();
+
+                    if (affected > 0) {
+                        plugin.getLogger().info("Removed permission '" + permission + "' from group '" + groupName + "'");
+                    }
+
+                    return affected > 0;
+                }
+
+            } catch (SQLException e) {
+                throw new RuntimeException("Failed to remove permission", e);
+            }
+        }, executorService);
+    }
+
+    public CompletableFuture<List<String>> getGroupPermissions(String groupName) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (!groupExists(groupName)) {
+                    return new ArrayList<>();
+                }
+
+                Group group = groupCache.get(groupName.toLowerCase());
+
+                String query = """
+                        SELECT permission
+                        FROM group_permissions
+                        WHERE group_id = ?
+                        """;
+
+                List<String> permissions = new ArrayList<>();
+
+                try (Connection conn = plugin.getConnection();
+                     PreparedStatement stmt = conn.prepareStatement(query)) {
+
+                    stmt.setInt(1, group.getId());
+                    ResultSet rs = stmt.executeQuery();
+
+                    while (rs.next()) {
+                        permissions.add(rs.getString("permission"));
+                    }
+                }
+
+                return permissions;
+
+            } catch (SQLException e) {
+                throw new RuntimeException("Failed to get group permissions", e);
+            }
+        }, executorService);
+    }
+
+    public CompletableFuture<List<String>> getPlayerPermissions(UUID uuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String groupName = getPlayerGroup(uuid);
+
+                if (groupName == null) {
+                    return new ArrayList<>();
+                }
+
+                Group group = groupCache.get(groupName.toLowerCase());
+                if (group == null) {
+                    return new ArrayList<>();
+                }
+
+                String query = """
+                        SELECT permission
+                        FROM group_permissions
+                        WHERE group_id = ?
+                        """;
+
+                List<String> permissions = new ArrayList<>();
+
+                try (Connection conn = plugin.getConnection();
+                     PreparedStatement stmt = conn.prepareStatement(query)) {
+
+                    stmt.setInt(1, group.getId());
+                    ResultSet rs = stmt.executeQuery();
+
+                    while (rs.next()) {
+                        permissions.add(rs.getString("permission"));
+                    }
+                }
+
+                return permissions;
+
+            } catch (SQLException e) {
+                throw new RuntimeException("Failed to get player permissions", e);
+            }
+        }, executorService);
+    }
+
+    public CompletableFuture<Boolean> groupHasPermission(String groupName, String permission) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (!groupExists(groupName)) {
+                    return false;
+                }
+
+                Group group = groupCache.get(groupName.toLowerCase());
+
+                String query = """
+                        SELECT COUNT(*) as count
+                        FROM group_permissions
+                        WHERE group_id = ? AND permission = ?
+                        """;
+
+                try (Connection conn = plugin.getConnection();
+                     PreparedStatement stmt = conn.prepareStatement(query)) {
+
+                    stmt.setInt(1, group.getId());
+                    stmt.setString(2, permission);
+                    ResultSet rs = stmt.executeQuery();
+
+                    if (rs.next()) {
+                        return rs.getInt("count") > 0;
+                    }
+                }
+
+                return false;
+
+            } catch (SQLException e) {
+                throw new RuntimeException("Failed to check permission", e);
+            }
+        }, executorService);
+    }
+    public CustomGroupSystem getPlugin() {
+        return plugin;
     }
 }
 

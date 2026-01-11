@@ -26,11 +26,13 @@ public class GroupSystemTabCompleter implements TabCompleter {
         List<String> completions = new ArrayList<>();
 
         if (args.length == 1) {
-            // Subcommands
             List<String> subcommands = Arrays.asList(
                     "creategroup",
                     "deletegroup",
                     "setpermission",
+                    "setperm",
+                    "listpermissions",
+                    "listperms",
                     "adduser",
                     "playerinfo",
                     "pinfo"
@@ -45,10 +47,14 @@ public class GroupSystemTabCompleter implements TabCompleter {
             String subcommand = args[0].toLowerCase();
 
             return switch (subcommand) {
-                case "deletegroup", "setpermission" -> getGroupCompletions(args[1]);
-                case "adduser", "playerinfo", "pinfo" -> getPlayerCompletions(args[1]);
-                case "creategroup" -> List.of("<n>");
-                default -> completions;
+                case "deletegroup", "setpermission", "setperm", "listpermissions", "listperms" ->
+                        getGroupCompletions(args[1]);
+                case "adduser", "playerinfo", "pinfo" ->
+                        getPlayerCompletions(args[1]);
+                case "creategroup" ->
+                        List.of("<n>");
+                default ->
+                        completions;
             };
         }
 
@@ -56,17 +62,21 @@ public class GroupSystemTabCompleter implements TabCompleter {
             String subcommand = args[0].toLowerCase();
 
             return switch (subcommand) {
-                case "creategroup" -> List.of("<prefix>");
-                case "adduser" -> getGroupCompletions(args[2]);
-                case "setpermission" -> List.of("<permission>");
-                default -> completions;
+                case "creategroup" ->
+                        List.of("<prefix>");
+                case "adduser" ->
+                        getGroupCompletions(args[2]);
+                case "setpermission", "setperm" ->
+                        getPermissionSuggestions(args[2]);
+                default ->
+                        completions;
             };
         }
 
         if (args.length == 4) {
             String subcommand = args[0].toLowerCase();
 
-            if (subcommand.equals("setpermission")) {
+            if (subcommand.equals("setpermission") || subcommand.equals("setperm")) {
                 return Stream.of("true", "false")
                         .filter(val -> val.startsWith(args[3].toLowerCase()))
                         .collect(Collectors.toList());
@@ -100,21 +110,39 @@ public class GroupSystemTabCompleter implements TabCompleter {
 
     private List<String> getDurationSuggestions(String partial) {
         List<String> suggestions = Arrays.asList(
-                "1h",       // 1 hour
-                "3h",       // 3 hours
-                "12h",      // 12 hours
-                "1d",       // 1 day
-                "3d",       // 3 days
-                "7d",       // 1 week
-                "14d",      // 2 weeks
-                "1mo",      // 1 month
-                "3mo",      // 3 months
+                "1h",
+                "3h",
+                "12h",
+                "1d",
+                "3d",
+                "7d",
+                "14d",
+                "1mo",
+                "3mo",
                 "permanent",
+                "1d12h",
+                "7d12h",
+                "1mo2w",
+                "2w3d"
+        );
 
-                "1d12h",    // 1 day 12 hours
-                "7d12h",    // 1 week 12 hours
-                "1mo2w",    // 1 month 2 weeks
-                "2w3d"      // 2 weeks 3 days
+        return suggestions.stream()
+                .filter(s -> s.toLowerCase().startsWith(partial.toLowerCase()))
+                .collect(Collectors.toList());
+    }
+
+    private List<String> getPermissionSuggestions(String partial) {
+        List<String> suggestions = Arrays.asList(
+                "minecraft.command.gamemode",
+                "minecraft.command.tp",
+                "minecraft.command.give",
+                "minecraft.command.kill",
+                "minecraft.command.kick",
+                "minecraft.command.ban",
+                "groupsystem.admin",
+                "minecraft.command.*",
+                "essentials.*",
+                "worldedit.*"
         );
 
         return suggestions.stream()

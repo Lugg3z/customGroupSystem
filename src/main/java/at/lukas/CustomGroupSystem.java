@@ -132,6 +132,21 @@ public class CustomGroupSystem extends JavaPlugin {
                 )
                 """;
 
+        // NEW: Group permissions table
+        String createGroupPermissionsTable = """
+                CREATE TABLE IF NOT EXISTS group_permissions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    group_id INT NOT NULL,
+                    permission VARCHAR(255) NOT NULL,
+                    CONSTRAINT fk_group_permissions_group
+                        FOREIGN KEY (group_id)
+                        REFERENCES group_data(id)
+                        ON DELETE CASCADE,
+                    UNIQUE KEY unique_group_permission (group_id, permission),
+                    INDEX idx_group_permissions_group (group_id)
+                )
+                """;
+
         String insertDefaultGroups = """
                 INSERT IGNORE INTO group_data (name, prefix) VALUES
                 ('default', '&7[Member]'),
@@ -144,6 +159,7 @@ public class CustomGroupSystem extends JavaPlugin {
 
             statement.execute(createGroupsTable);
             statement.execute(createPlayerGroupsTable);
+            statement.execute(createGroupPermissionsTable);  // ← ADD THIS
             statement.execute(insertDefaultGroups);
 
             logger.info("Database tables initialized successfully.");
@@ -159,7 +175,8 @@ public class CustomGroupSystem extends JavaPlugin {
 
     private void initializeManagers() {
         dbManager = new DatabaseManager(this);
-        permissionManager = new PermissionManager();
+
+        permissionManager = new PermissionManager(this, dbManager);  // ← UPDATE THIS
 
         dbManager.loadAllGroupsIntoCache().thenRun(() -> {
             logger.info("Loaded " + dbManager.getAllGroups().size() + " groups into cache.");
@@ -182,7 +199,7 @@ public class CustomGroupSystem extends JavaPlugin {
     private void registerEventListeners() {
         PluginManager pluginManager = getServer().getPluginManager();
 
-        pluginManager.registerEvents(new PlayerListener(dbManager, logger), this);
+        pluginManager.registerEvents(new PlayerListener(dbManager, permissionManager, logger), this);
         pluginManager.registerEvents(new MotdListener(getConfig()), this);
         pluginManager.registerEvents(new SignListener(dbManager), this);
 
@@ -190,7 +207,7 @@ public class CustomGroupSystem extends JavaPlugin {
     }
 
     private void startExpiryCheckTask() {
-        expiryCheckTask = new ExpiryCheckTask(this, dbManager)
+        expiryCheckTask = new ExpiryCheckTask(this, dbManager, permissionManager)
                 .runTaskTimerAsynchronously(this, 200L, 200L);
 
         logger.info("Expiry check task started (runs every 10 seconds)");

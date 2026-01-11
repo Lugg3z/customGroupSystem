@@ -23,6 +23,10 @@ permissions:
     description: Allows setting group permissions
     default: op
 
+  groupsystem.admin.listpermissions:
+    description: Allows listing group permissions
+    default: op
+
   groupsystem.admin.adduser:
     description: Allows adding users to groups (including temporary groups)
     default: op
