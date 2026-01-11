@@ -2,14 +2,15 @@ package at.lukas;
 
 import at.lukas.commands.GroupSystemCommand;
 import at.lukas.commands.GroupSystemTabCompleter;
+import at.lukas.listener.MotdListener;
+import at.lukas.listener.PlayerListener;
+import at.lukas.listener.SignListener;
+import at.lukas.manager.DatabaseManager;
+import at.lukas.manager.PermissionManager;
 import at.lukas.misc.ExpiryCheckTask;
-import at.lukas.misc.MotdListener;
-import at.lukas.misc.SignListener;
-import at.lukas.player.DatabaseManager;
-import at.lukas.player.PermissionManager;
-import at.lukas.player.PlayerListener;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -25,7 +26,6 @@ public class CustomGroupSystem extends JavaPlugin {
     private HikariDataSource dataSource;
     private DatabaseManager dbManager;
     private PermissionManager permissionManager;
-
     private BukkitTask expiryCheckTask;
 
     @Override
@@ -39,11 +39,8 @@ public class CustomGroupSystem extends JavaPlugin {
         }
 
         initializeManagers();
-
-        registerCommands(permissionManager);
-
-        registerEvents();
-
+        registerCommands();
+        registerEventListeners();
         startExpiryCheckTask();
 
         logger.info("CustomGroupSystem enabled successfully!");
@@ -78,15 +75,31 @@ public class CustomGroupSystem extends JavaPlugin {
     private void connectToDatabase() throws SQLException {
         logger.info("Connecting to database...");
 
-        HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:mysql://127.0.0.1:3307/minecraft");
-        config.setUsername("mcuser");
-        config.setPassword("mcuser");
-        config.setMaximumPoolSize(10);
-        config.setMinimumIdle(2);
-        config.setConnectionTimeout(10000);
+        FileConfiguration config = getConfig();
 
-        dataSource = new HikariDataSource(config);
+        String host = config.getString("database.host", "localhost");
+        int port = config.getInt("database.port", 3306);
+        String database = config.getString("database.database", "minecraft");
+        String username = config.getString("database.username", "mcuser");
+        String password = config.getString("database.password", "mcuser");
+
+        int maxPoolSize = config.getInt("database.pool.maximum-pool-size", 10);
+        int minIdle = config.getInt("database.pool.minimum-idle", 2);
+        int connectionTimeout = config.getInt("database.pool.connection-timeout", 30000);
+
+        String jdbcUrl = String.format("jdbc:mysql://%s:%d/%s", host, port, database);
+
+        logger.info("Connecting to: " + jdbcUrl);
+
+        HikariConfig hikariConfig = new HikariConfig();
+        hikariConfig.setJdbcUrl(jdbcUrl);
+        hikariConfig.setUsername(username);
+        hikariConfig.setPassword(password);
+        hikariConfig.setMaximumPoolSize(maxPoolSize);
+        hikariConfig.setMinimumIdle(minIdle);
+        hikariConfig.setConnectionTimeout(connectionTimeout);
+
+        dataSource = new HikariDataSource(hikariConfig);
 
         try (Connection connection = dataSource.getConnection()) {
             if (connection.isValid(5)) {
@@ -156,7 +169,7 @@ public class CustomGroupSystem extends JavaPlugin {
         });
     }
 
-    private void registerCommands(PermissionManager permissionManager) {
+    private void registerCommands() {
         GroupSystemCommand command = new GroupSystemCommand(permissionManager, dbManager, this);
         GroupSystemTabCompleter tabCompleter = new GroupSystemTabCompleter(dbManager);
 
@@ -166,21 +179,14 @@ public class CustomGroupSystem extends JavaPlugin {
         logger.info("Commands registered.");
     }
 
-    private void registerEvents() {
-        PluginManager pm = getServer().getPluginManager();
+    private void registerEventListeners() {
+        PluginManager pluginManager = getServer().getPluginManager();
 
-        pm.registerEvents(new PlayerListener(dbManager, logger), this);
-        pm.registerEvents(new MotdListener(getConfig()), this);
-        pm.registerEvents(new SignListener(dbManager), this);
+        pluginManager.registerEvents(new PlayerListener(dbManager, logger), this);
+        pluginManager.registerEvents(new MotdListener(getConfig()), this);
+        pluginManager.registerEvents(new SignListener(dbManager), this);
+
         logger.info("Event listeners registered.");
-    }
-
-    public Connection getConnection() throws SQLException {
-        return dataSource.getConnection();
-    }
-
-    public DatabaseManager getDatabaseManager() {
-        return dbManager;
     }
 
     private void startExpiryCheckTask() {
@@ -188,5 +194,9 @@ public class CustomGroupSystem extends JavaPlugin {
                 .runTaskTimerAsynchronously(this, 200L, 200L);
 
         logger.info("Expiry check task started (runs every 10 seconds)");
+    }
+
+    public Connection getConnection() throws SQLException {
+        return dataSource.getConnection();
     }
 }

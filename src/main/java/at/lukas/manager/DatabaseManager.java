@@ -1,6 +1,7 @@
-package at.lukas.player;
+package at.lukas.manager;
 
 import at.lukas.CustomGroupSystem;
+import at.lukas.misc.PlayerHelper;
 import at.lukas.model.Group;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -19,7 +20,7 @@ public class DatabaseManager {
     private final CustomGroupSystem plugin;
     private final Map<String, Group> groupCache = new ConcurrentHashMap<>();
     private final Map<UUID, String> playerGroupCache = new ConcurrentHashMap<>();
-    private final ExecutorService executor = Executors.newFixedThreadPool(8);
+    private final ExecutorService executorService = Executors.newFixedThreadPool(8);
 
     public DatabaseManager(CustomGroupSystem plugin) {
         this.plugin = plugin;
@@ -48,7 +49,7 @@ public class DatabaseManager {
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to load groups: " + e.getMessage());
             }
-        }, executor);
+        }, executorService);
     }
 
     public boolean groupExists(String groupName) {
@@ -78,11 +79,11 @@ public class DatabaseManager {
                 stmt.setString(2, prefix);
                 stmt.executeUpdate();
 
-                ResultSet rs = stmt.getGeneratedKeys();
-                if (rs.next()) {
-                    int id = rs.getInt(1);
+                ResultSet generatedKeys = stmt.getGeneratedKeys();
+                if (generatedKeys.next()) {
+                    int groupId = generatedKeys.getInt(1);
 
-                    Group group = new Group(id, name.toLowerCase(), prefix);
+                    Group group = new Group(groupId, name.toLowerCase(), prefix);
                     groupCache.put(name.toLowerCase(), group);
 
                     plugin.getLogger().info("Created group: " + name);
@@ -90,7 +91,7 @@ public class DatabaseManager {
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to create group: " + e.getMessage());
             }
-        }, executor);
+        }, executorService);
     }
 
     public CompletableFuture<Boolean> deleteGroup(String groupName) {
@@ -105,37 +106,19 @@ public class DatabaseManager {
         }
 
         return CompletableFuture.supplyAsync(() -> {
-            List<UUID> affectedPlayers = new ArrayList<>();
-            for (Map.Entry<UUID, String> entry : playerGroupCache.entrySet()) {
-                if (entry.getValue().equalsIgnoreCase(groupName)) {
-                    affectedPlayers.add(entry.getKey());
-                }
-            }
+            List<UUID> affectedPlayers = findPlayersInGroup(groupName);
 
-            String query = "DELETE FROM group_data WHERE name = ?";
+            String deleteQuery = "DELETE FROM group_data WHERE name = ?";
 
             try (Connection conn = plugin.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(query)) {
+                 PreparedStatement stmt = conn.prepareStatement(deleteQuery)) {
 
                 stmt.setString(1, groupName.toLowerCase());
-                int affected = stmt.executeUpdate();
+                int rowsAffected = stmt.executeUpdate();
 
-                if (affected > 0) {
+                if (rowsAffected > 0) {
                     groupCache.remove(groupName.toLowerCase());
-
-                    for (UUID uuid : affectedPlayers) {
-                        try {
-                            setUserGroupSync(uuid, "default");
-
-                            Player player = plugin.getServer().getPlayer(uuid);
-                            if (player != null && player.isOnline()) {
-                                plugin.getServer().getScheduler().runTask(plugin, () -> 
-                                    PlayerHelper.applyPrefix(player, this));
-                            }
-                        } catch (SQLException e) {
-                            plugin.getLogger().warning("Failed to reassign player " + uuid + " to default: " + e.getMessage());
-                        }
-                    }
+                    reassignPlayersToDefault(affectedPlayers);
 
                     plugin.getLogger().info("Deleted group: " + groupName + " (" + affectedPlayers.size() + " players reassigned to default)");
                     return true;
@@ -146,10 +129,10 @@ public class DatabaseManager {
                 plugin.getLogger().severe("Failed to delete group: " + e.getMessage());
                 return false;
             }
-        }, executor);
+        }, executorService);
     }
 
-    public CompletableFuture<Void> loadPlayerGroup(UUID uuid) {
+    public CompletableFuture<Void> loadPlayerGroup(UUID playerUuid) {
         return CompletableFuture.runAsync(() -> {
             String query = """
                     SELECT g.name
@@ -161,39 +144,39 @@ public class DatabaseManager {
             try (Connection conn = plugin.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(query)) {
 
-                stmt.setString(1, uuid.toString());
+                stmt.setString(1, playerUuid.toString());
                 ResultSet rs = stmt.executeQuery();
 
                 if (rs.next()) {
                     String groupName = rs.getString("name");
-                    playerGroupCache.put(uuid, groupName.toLowerCase());
+                    playerGroupCache.put(playerUuid, groupName.toLowerCase());
                 } else {
-                    setUserGroupSync(uuid, "default");
+                    setUserGroupSync(playerUuid, "default");
                 }
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to load player group: " + e.getMessage());
             }
-        }, executor);
+        }, executorService);
     }
 
-    public String getPlayerGroup(UUID uuid) {
-        return playerGroupCache.getOrDefault(uuid, "default");
+    public String getPlayerGroup(UUID playerUuid) {
+        return playerGroupCache.getOrDefault(playerUuid, "default");
     }
 
-    public String getPlayerPrefix(UUID uuid) {
-        String groupName = getPlayerGroup(uuid);
+    public String getPlayerPrefix(UUID playerUuid) {
+        String groupName = getPlayerGroup(playerUuid);
         return getPrefix(groupName);
     }
 
-    public boolean playerHasGroup(UUID uuid) {
-        return playerGroupCache.containsKey(uuid);
+    public boolean playerHasGroup(UUID playerUuid) {
+        return playerGroupCache.containsKey(playerUuid);
     }
 
-    public CompletableFuture<Void> setUserGroup(UUID uuid, String groupName) {
-        return setUserGroup(uuid, groupName, null);
+    public CompletableFuture<Void> setUserGroup(UUID playerUuid, String groupName) {
+        return setUserGroup(playerUuid, groupName, null);
     }
 
-    public CompletableFuture<Void> setUserGroup(UUID uuid, String groupName, Long expiryMillis) {
+    public CompletableFuture<Void> setUserGroup(UUID playerUuid, String groupName, Long expiryMillis) {
         if (!groupExists(groupName)) {
             CompletableFuture<Void> future = new CompletableFuture<>();
             future.completeExceptionally(new IllegalArgumentException("Group does not exist: " + groupName));
@@ -202,26 +185,25 @@ public class DatabaseManager {
 
         return CompletableFuture.runAsync(() -> {
             try {
-                setUserGroupSync(uuid, groupName, expiryMillis);
+                setUserGroupSync(playerUuid, groupName, expiryMillis);
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to set user group: " + e.getMessage());
             }
-        }, executor);
+        }, executorService);
     }
 
-    private void setUserGroupSync(UUID uuid, String groupName) throws SQLException {
-        setUserGroupSync(uuid, groupName, null);
+    private void setUserGroupSync(UUID playerUuid, String groupName) throws SQLException {
+        setUserGroupSync(playerUuid, groupName, null);
     }
 
-    private void setUserGroupSync(UUID uuid, String groupName, Long expiryMillis) throws SQLException {
+    private void setUserGroupSync(UUID playerUuid, String groupName, Long expiryMillis) throws SQLException {
         Group group = groupCache.get(groupName.toLowerCase());
-
-        String query = getQueryGroupDuration(expiryMillis);
+        String upsertQuery = buildUserGroupUpsertQuery(expiryMillis);
 
         try (Connection conn = plugin.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
+             PreparedStatement stmt = conn.prepareStatement(upsertQuery)) {
 
-            stmt.setString(1, uuid.toString());
+            stmt.setString(1, playerUuid.toString());
             stmt.setInt(2, group.getId());
 
             if (expiryMillis != null) {
@@ -229,32 +211,59 @@ public class DatabaseManager {
             }
 
             stmt.executeUpdate();
+            playerGroupCache.put(playerUuid, groupName.toLowerCase());
 
-            playerGroupCache.put(uuid, groupName.toLowerCase());
-
-            plugin.getLogger().info("Set group for " + uuid + " to " + groupName +
+            plugin.getLogger().info("Set group for " + playerUuid + " to " + groupName +
                     (expiryMillis == null ? " (permanent)" : " (expires: " + new java.util.Date(expiryMillis) + ")"));
         }
     }
 
-    private static @NotNull String getQueryGroupDuration(Long expiryMillis) {
-        String query;
-        if (expiryMillis == null) {
-            query = """
-                    REPLACE INTO player_groups (uuid, group_id, expiry, assigned_at)
-                    VALUES (?, ?, NULL, NOW())
+    public CompletableFuture<Long> getPlayerGroupExpiry(UUID playerUuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            String query = """
+                    SELECT UNIX_TIMESTAMP(expiry) * 1000 as expiry_millis
+                    FROM player_groups
+                    WHERE uuid = ?
                     """;
-        } else {
-            query = """
-                    REPLACE INTO player_groups (uuid, group_id, expiry, assigned_at)
-                    VALUES (?, ?, FROM_UNIXTIME(?), NOW())
-                    """;
-        }
-        return query;
+
+            try (Connection conn = plugin.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(query)) {
+
+                stmt.setString(1, playerUuid.toString());
+                ResultSet rs = stmt.executeQuery();
+
+                if (rs.next()) {
+                    long expiryMillis = rs.getLong("expiry_millis");
+                    return rs.wasNull() ? null : expiryMillis;
+                }
+
+                return null;
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to get expiry: " + e.getMessage());
+                return null;
+            }
+        }, executorService);
     }
 
-    public void unloadPlayer(UUID uuid) {
-        playerGroupCache.remove(uuid);
+    public CompletableFuture<Integer> removeExpiredGroups() {
+        return CompletableFuture.supplyAsync(() -> {
+            List<UUID> expiredPlayerUuids = findExpiredPlayers();
+
+            for (UUID playerUuid : expiredPlayerUuids) {
+                try {
+                    setUserGroupSync(playerUuid, "default", null);
+                    applyPrefixToOnlinePlayer(playerUuid);
+                } catch (SQLException e) {
+                    plugin.getLogger().warning("Failed to reset expired group: " + e.getMessage());
+                }
+            }
+
+            return expiredPlayerUuids.size();
+        }, executorService);
+    }
+
+    public void unloadPlayer(UUID playerUuid) {
+        playerGroupCache.remove(playerUuid);
     }
 
     public Set<UUID> getCachedPlayers() {
@@ -270,80 +279,79 @@ public class DatabaseManager {
                 groupCache.size(), playerGroupCache.size());
     }
 
-    public CompletableFuture<Long> getPlayerGroupExpiry(UUID uuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            String query = """
-                    SELECT UNIX_TIMESTAMP(expiry) * 1000 as expiry_millis
-                    FROM player_groups
-                    WHERE uuid = ?
-                    """;
-
-            try (Connection conn = plugin.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(query)) {
-
-                stmt.setString(1, uuid.toString());
-                ResultSet rs = stmt.executeQuery();
-
-                if (rs.next()) {
-                    long expiryMillis = rs.getLong("expiry_millis");
-                    return rs.wasNull() ? null : expiryMillis;
-                }
-
-                return null;
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to get expiry: " + e.getMessage());
-                return null;
-            }
-        }, executor);
-    }
-
-    public CompletableFuture<Integer> removeExpiredGroups() {
-        return CompletableFuture.supplyAsync(() -> {
-            String query = """
-                    SELECT pg.uuid, g.name
-                    FROM player_groups pg
-                    JOIN group_data g ON pg.group_id = g.id
-                    WHERE pg.expiry IS NOT NULL AND pg.expiry <= NOW()
-                    """;
-
-            List<UUID> expiredPlayers = new ArrayList<>();
-
-            try (Connection conn = plugin.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(query);
-                 ResultSet rs = stmt.executeQuery()) {
-
-                while (rs.next()) {
-                    UUID uuid = UUID.fromString(rs.getString("uuid"));
-                    String groupName = rs.getString("name");
-                    expiredPlayers.add(uuid);
-
-                    plugin.getLogger().info("Group expired for " + uuid + " (was: " + groupName + ")");
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to check expired groups: " + e.getMessage());
-                return 0;
-            }
-
-            for (UUID uuid : expiredPlayers) {
-                try {
-                    setUserGroupSync(uuid, "default", null);
-
-                    Player player = plugin.getServer().getPlayer(uuid);
-                    if (player != null && player.isOnline()) {
-                        plugin.getServer().getScheduler().runTask(plugin, () -> 
-                            PlayerHelper.applyPrefix(player, this));
-                    }
-                } catch (SQLException e) {
-                    plugin.getLogger().warning("Failed to reset expired group: " + e.getMessage());
-                }
-            }
-
-            return expiredPlayers.size();
-        }, executor);
-    }
-
     public void shutdown() {
-        executor.shutdown();
+        executorService.shutdown();
+    }
+
+    private @NotNull String buildUserGroupUpsertQuery(Long expiryMillis) {
+        if (expiryMillis == null) {
+            return """
+                    REPLACE INTO player_groups (uuid, group_id, expiry, assigned_at)
+                    VALUES (?, ?, NULL, NOW())
+                    """;
+        } else {
+            return """
+                    REPLACE INTO player_groups (uuid, group_id, expiry, assigned_at)
+                    VALUES (?, ?, FROM_UNIXTIME(?), NOW())
+                    """;
+        }
+    }
+
+    private List<UUID> findPlayersInGroup(String groupName) {
+        List<UUID> players = new ArrayList<>();
+        for (Map.Entry<UUID, String> entry : playerGroupCache.entrySet()) {
+            if (entry.getValue().equalsIgnoreCase(groupName)) {
+                players.add(entry.getKey());
+            }
+        }
+        return players;
+    }
+
+    private void reassignPlayersToDefault(List<UUID> playerUuids) {
+        for (UUID playerUuid : playerUuids) {
+            try {
+                setUserGroupSync(playerUuid, "default");
+                applyPrefixToOnlinePlayer(playerUuid);
+            } catch (SQLException e) {
+                plugin.getLogger().warning("Failed to reassign player " + playerUuid + " to default: " + e.getMessage());
+            }
+        }
+    }
+
+    private void applyPrefixToOnlinePlayer(UUID playerUuid) {
+        Player player = plugin.getServer().getPlayer(playerUuid);
+        if (player != null && player.isOnline()) {
+            plugin.getServer().getScheduler().runTask(plugin, () ->
+                PlayerHelper.applyPrefix(player, this));
+        }
+    }
+
+    private List<UUID> findExpiredPlayers() {
+        String query = """
+                SELECT pg.uuid, g.name
+                FROM player_groups pg
+                JOIN group_data g ON pg.group_id = g.id
+                WHERE pg.expiry IS NOT NULL AND pg.expiry <= NOW()
+                """;
+
+        List<UUID> expiredPlayerUuids = new ArrayList<>();
+
+        try (Connection conn = plugin.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                UUID playerUuid = UUID.fromString(rs.getString("uuid"));
+                String groupName = rs.getString("name");
+                expiredPlayerUuids.add(playerUuid);
+
+                plugin.getLogger().info("Group expired for " + playerUuid + " (was: " + groupName + ")");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to check expired groups: " + e.getMessage());
+        }
+
+        return expiredPlayerUuids;
     }
 }
 

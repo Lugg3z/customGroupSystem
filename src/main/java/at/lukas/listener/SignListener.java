@@ -1,6 +1,6 @@
-package at.lukas.misc;
+package at.lukas.listener;
 
-import at.lukas.player.DatabaseManager;
+import at.lukas.manager.DatabaseManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
@@ -28,7 +28,6 @@ import java.util.regex.Pattern;
 
 /**
  * Limitation: Schild platziert -> Groupwechsel -> Schild zeigt nocht alte Rolle
- * Man könnte einen Command zb einfügen der Schilder in der Nähe updated
  */
 public class SignListener implements Listener {
     private final DatabaseManager dbManager;
@@ -54,19 +53,16 @@ public class SignListener implements Listener {
                 continue;
             }
 
-            String processed = processPlaceholders(plainText, placer);
-
-            Component newLine = LegacyComponentSerializer.legacyAmpersand().deserialize(processed);
+            String processedText = processPlaceholders(plainText, placer);
+            Component newLine = LegacyComponentSerializer.legacyAmpersand().deserialize(processedText);
             event.line(i, newLine);
         }
     }
 
     private String processPlaceholders(String text, Player placer) {
         String result = text;
-
         result = replaceGroupPlaceholders(result);
         result = replaceNamePlaceholders(result);
-
         return result;
     }
 
@@ -76,7 +72,7 @@ public class SignListener implements Listener {
 
         while (matcher.find()) {
             String playerName = matcher.group(1);
-            String replacement = getPlayerGroup(playerName);
+            String replacement = getPlayerGroupPrefix(playerName);
             matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
         }
 
@@ -99,13 +95,13 @@ public class SignListener implements Listener {
     }
 
     private String getPlayerWithPrefix(String playerName) {
-        UUID uuid = getPlayerUUID(playerName);
+        UUID playerUuid = getPlayerUUID(playerName);
 
-        if (uuid == null) {
+        if (playerUuid == null) {
             return "&c[Unknown]";
         }
 
-        String prefix = dbManager.getPlayerPrefix(uuid);
+        String prefix = dbManager.getPlayerPrefix(playerUuid);
         if (prefix == null || prefix.isEmpty()) {
             prefix = "&7";
         }
@@ -113,14 +109,14 @@ public class SignListener implements Listener {
         return prefix + playerName;
     }
 
-    private String getPlayerGroup(String playerName) {
-        UUID uuid = getPlayerUUID(playerName);
+    private String getPlayerGroupPrefix(String playerName) {
+        UUID playerUuid = getPlayerUUID(playerName);
 
-        if (uuid == null) {
+        if (playerUuid == null) {
             return "&c[Unknown]";
         }
 
-        String prefix = dbManager.getPlayerPrefix(uuid);
+        String prefix = dbManager.getPlayerPrefix(playerUuid);
         if (prefix != null && !prefix.isEmpty()) {
             return prefix;
         }
@@ -129,14 +125,14 @@ public class SignListener implements Listener {
     }
 
     private UUID getPlayerUUID(String playerName) {
-        Player online = Bukkit.getPlayer(playerName);
-        if (online != null) {
-            return online.getUniqueId();
+        Player onlinePlayer = Bukkit.getPlayer(playerName);
+        if (onlinePlayer != null) {
+            return onlinePlayer.getUniqueId();
         }
 
-        OfflinePlayer offline = Bukkit.getOfflinePlayer(playerName);
-        if (offline.hasPlayedBefore()) {
-            return offline.getUniqueId();
+        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerName);
+        if (offlinePlayer.hasPlayedBefore()) {
+            return offlinePlayer.getUniqueId();
         }
 
         return null;

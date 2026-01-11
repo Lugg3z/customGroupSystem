@@ -1,7 +1,7 @@
 package at.lukas.misc;
 
 import at.lukas.CustomGroupSystem;
-import at.lukas.player.DatabaseManager;
+import at.lukas.manager.DatabaseManager;
 import org.bukkit.scheduler.BukkitRunnable;
 
 public class ExpiryCheckTask extends BukkitRunnable {

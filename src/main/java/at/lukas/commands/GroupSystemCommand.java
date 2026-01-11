@@ -1,9 +1,9 @@
 package at.lukas.commands;
 
 import at.lukas.misc.DurationParser;
-import at.lukas.player.DatabaseManager;
-import at.lukas.player.PermissionManager;
-import at.lukas.player.PlayerHelper;
+import at.lukas.manager.DatabaseManager;
+import at.lukas.manager.PermissionManager;
+import at.lukas.misc.PlayerHelper;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;

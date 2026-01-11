@@ -1,6 +1,6 @@
 package at.lukas.commands;
 
-import at.lukas.player.DatabaseManager;
+import at.lukas.manager.DatabaseManager;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;

@@ -1,4 +1,4 @@
-package at.lukas.misc;
+package at.lukas.listener;
 
 import com.destroystokyo.paper.event.server.PaperServerListPingEvent;
 import net.kyori.adventure.text.Component;

@@ -1,5 +1,6 @@
-package at.lukas.player;
+package at.lukas.misc;
 
+import at.lukas.manager.DatabaseManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.entity.Player;
