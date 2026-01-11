@@ -18,7 +18,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.sql.SQLException;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -91,9 +90,6 @@ public class GroupSystemCommand implements CommandExecutor {
         return switch (subcommand) {
             case "creategroup" -> handleCreateGroup(sender, args);
             case "deletegroup" -> handleDeleteGroup(sender, args);
-            /*
-            case "setpermission" -> handleSetPermission(sender, args);
-            */
             case "adduser" -> handleAddUser(sender, args);
             case "playerinfo", "pinfo" -> handlePlayerInfo(sender, args);
             default -> {
@@ -123,19 +119,18 @@ public class GroupSystemCommand implements CommandExecutor {
             return true;
         }
 
-        try {
-            if (dbManager.groupExists(groupName)) {
-                sender.sendMessage(getMessage("creategroup.already-exists", "group", groupName));
-                return true;
-            }
+        if (dbManager.groupExists(groupName)) {
+            sender.sendMessage(getMessage("creategroup.already-exists", "group", groupName));
+            return true;
+        }
 
-            dbManager.createGroup(groupName, prefix);
-            sender.sendMessage(getMessage("creategroup.success", "group", groupName));
-
-        } catch (Exception e) {
+        dbManager.createGroup(groupName, prefix).thenRun(() ->
+                sender.sendMessage(getMessage("creategroup.success", "group", groupName))
+        ).exceptionally(e -> {
             sender.sendMessage(getMessage("creategroup.error", "error", e.getMessage()));
             logger.severe("Error creating group: " + e.getMessage());
-        }
+            return null;
+        });
 
         return true;
     }
@@ -154,22 +149,22 @@ public class GroupSystemCommand implements CommandExecutor {
 
         String groupName = args[1];
 
-        try {
-            if (!dbManager.groupExists(groupName)) {
-                sender.sendMessage(getMessage("deletegroup.not-found", "group", groupName));
-                return true;
-            }
+        if (!dbManager.groupExists(groupName)) {
+            sender.sendMessage(getMessage("deletegroup.not-found", "group", groupName));
+            return true;
+        }
 
-            if (!dbManager.deleteGroup(groupName)) {
+        dbManager.deleteGroup(groupName).thenAccept(success -> {
+            if (!success) {
                 sender.sendMessage(getMessage("deletegroup.failed", "group", groupName));
             } else {
                 sender.sendMessage(getMessage("deletegroup.success", "group", groupName));
             }
-
-        } catch (Exception e) {
+        }).exceptionally(e -> {
             sender.sendMessage(getMessage("deletegroup.error", "error", e.getMessage()));
             logger.severe("Error deleting group: " + e.getMessage());
-        }
+            return null;
+        });
 
         return true;
     }
@@ -191,10 +186,9 @@ public class GroupSystemCommand implements CommandExecutor {
         String groupName = args[2].toLowerCase();
 
         Long expiryMillis = null;
-        String durationStr = null;
 
         if (args.length >= 4) {
-            durationStr = args[3];
+            String durationStr = args[3];
 
             try {
                 Long durationMillis = DurationParser.parse(durationStr);
@@ -222,37 +216,38 @@ public class GroupSystemCommand implements CommandExecutor {
             uuid = offlinePlayer.getUniqueId();
         }
 
-        try {
-            if (!dbManager.groupExists(groupName)) {
-                sender.sendMessage(getMessage("adduser.group-not-found", "group", groupName));
-                return true;
-            }
+        if (!dbManager.groupExists(groupName)) {
+            sender.sendMessage(getMessage("adduser.group-not-found", "group", groupName));
+            return true;
+        }
 
-            dbManager.setUserGroup(uuid, groupName, expiryMillis);
+        final Player finalTarget = target;
+        final Long finalExpiry = expiryMillis;
 
+        dbManager.setUserGroup(uuid, groupName, expiryMillis).thenRun(() -> {
             sender.sendMessage(getMessage("adduser.success", "player", playerName, "group", groupName));
 
-            if (expiryMillis == null) {
+            if (finalExpiry == null) {
                 sender.sendMessage(getMessage("adduser.duration-permanent"));
             } else {
-                long remaining = expiryMillis - System.currentTimeMillis();
+                long remaining = finalExpiry - System.currentTimeMillis();
                 String formatted = DurationParser.formatDuration(remaining);
                 sender.sendMessage(getMessage("adduser.duration-temporary", "duration", formatted));
 
-                String date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(expiryMillis));
+                String date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(finalExpiry));
                 sender.sendMessage(getMessage("adduser.expires-at", "date", date));
             }
 
-            if (target != null) {
-                PlayerHelper.applyPrefix(target, dbManager);
+            if (finalTarget != null) {
+                PlayerHelper.applyPrefix(finalTarget, dbManager);
             } else {
                 sender.sendMessage(getMessage("adduser.player-offline"));
             }
-
-        } catch (SQLException e) {
+        }).exceptionally(e -> {
             sender.sendMessage(getMessage("adduser.error", "error", e.getMessage()));
             plugin.getLogger().severe("Error adding user: " + e.getMessage());
-        }
+            return null;
+        });
 
         return true;
     }
@@ -288,15 +283,16 @@ public class GroupSystemCommand implements CommandExecutor {
             displayName = offlinePlayer.getName() != null ? offlinePlayer.getName() : playerName;
         }
 
-        try {
-            String groupName = dbManager.getPlayerGroup(uuid);
-            String prefix = dbManager.getPlayerPrefix(uuid);
-            Long expiryMillis = dbManager.getPlayerGroupExpiry(uuid);
+        String groupName = dbManager.getPlayerGroup(uuid);
+        String prefix = dbManager.getPlayerPrefix(uuid);
+        final String finalDisplayName = displayName;
+        final Player finalTarget = target;
 
-            sender.sendMessage(getMessage("playerinfo.header", "player", displayName));
+        dbManager.getPlayerGroupExpiry(uuid).thenAccept(expiryMillis -> {
+            sender.sendMessage(getMessage("playerinfo.header", "player", finalDisplayName));
             sender.sendMessage(getMessage("playerinfo.uuid", "uuid", uuid.toString()));
             sender.sendMessage(getMessage("playerinfo.group", "group", groupName));
-            sender.sendMessage(getMessage("playerinfo.prefix", "prefix", prefix, "player", displayName));
+            sender.sendMessage(getMessage("playerinfo.prefix", "prefix", prefix, "player", finalDisplayName));
 
             if (expiryMillis == null) {
                 sender.sendMessage(getMessage("playerinfo.duration-permanent"));
@@ -314,13 +310,14 @@ public class GroupSystemCommand implements CommandExecutor {
                 }
             }
 
-            sender.sendMessage(target != null ? getMessage("playerinfo.status-online") : getMessage("playerinfo.status-offline"));
-
-        } catch (SQLException e) {
+            sender.sendMessage(finalTarget != null ? getMessage("playerinfo.status-online") : getMessage("playerinfo.status-offline"));
+        }).exceptionally(e -> {
             sender.sendMessage(getMessage("playerinfo.error", "error", e.getMessage()));
             plugin.getLogger().severe("Error getting player info: " + e.getMessage());
-        }
+            return null;
+        });
 
         return true;
     }
 }
+

@@ -56,6 +56,10 @@ public class CustomGroupSystem extends JavaPlugin {
             logger.info("Expiry check task cancelled.");
         }
 
+        if (dbManager != null) {
+            dbManager.shutdown();
+        }
+
         closeDatabase();
         logger.info("CustomGroupSystem disabled.");
     }
@@ -144,12 +148,12 @@ public class CustomGroupSystem extends JavaPlugin {
         dbManager = new DatabaseManager(this);
         permissionManager = new PermissionManager();
 
-        try {
-            dbManager.loadAllGroupsIntoCache();
+        dbManager.loadAllGroupsIntoCache().thenRun(() -> {
             logger.info("Loaded " + dbManager.getAllGroups().size() + " groups into cache.");
-        } catch (SQLException e) {
+        }).exceptionally(e -> {
             logger.warning("Failed to load groups into cache: " + e.getMessage());
-        }
+            return null;
+        });
     }
 
     private void registerCommands(PermissionManager permissionManager) {
@@ -180,10 +184,9 @@ public class CustomGroupSystem extends JavaPlugin {
     }
 
     private void startExpiryCheckTask() {
-        // Check abgelaufene Gruppen alle 10s
         expiryCheckTask = new ExpiryCheckTask(this, dbManager)
                 .runTaskTimerAsynchronously(this, 200L, 200L);
 
-        logger.info("Expiry check task started (runs every 5 minutes)");
+        logger.info("Expiry check task started (runs every 10 seconds)");
     }
 }

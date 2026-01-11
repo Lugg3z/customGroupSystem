@@ -4,8 +4,6 @@ import at.lukas.CustomGroupSystem;
 import at.lukas.player.DatabaseManager;
 import org.bukkit.scheduler.BukkitRunnable;
 
-import java.sql.SQLException;
-
 public class ExpiryCheckTask extends BukkitRunnable {
 
     private final CustomGroupSystem plugin;
@@ -18,15 +16,11 @@ public class ExpiryCheckTask extends BukkitRunnable {
 
     @Override
     public void run() {
-        try {
-            int removed = dbManager.removeExpiredGroups();
-
-            if (removed > 0) {
-                plugin.getLogger().info("Removed " + removed + " expired group(s)");
+        dbManager.removeExpiredGroups().thenAccept(count -> {
+            if (count > 0) {
+                plugin.getLogger().info("Removed " + count + " expired group(s)");
             }
+        });
 
-        } catch (SQLException e) {
-            plugin.getLogger().warning("Error checking expired groups: " + e.getMessage());
-        }
     }
 }
