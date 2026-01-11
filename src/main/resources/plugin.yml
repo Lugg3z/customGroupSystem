@@ -10,16 +10,27 @@ commands:
     usage: /gs <subcommand> [args]
     aliases: [groupsystem, group]
 
-# Nur die Adminpermissions sind hier aufgezählt, Rest soll Datenbank bzw. custom sein
 permissions:
   groupsystem.admin.creategroup:
+    description: Allows creating new groups
     default: op
+
   groupsystem.admin.deletegroup:
+    description: Allows deleting groups
     default: op
+
   groupsystem.admin.setpermission:
+    description: Allows setting group permissions
     default: op
+
   groupsystem.admin.adduser:
+    description: Allows adding users to groups (including temporary groups)
     default: op
+
+  groupsystem.admin.playerinfo:
+    description: Allows checking player group information and expiry
+    default: true
+
 
 libraries:
   - com.zaxxer:HikariCP:5.1.0

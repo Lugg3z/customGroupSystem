@@ -2,10 +2,11 @@ messages:
   # Help Menu
   help:
     header: "§e=== Group System Commands ==="
-    creategroup: "§e/gs creategroup <name> <prefix>"
-    deletegroup: "§e/gs deletegroup <name>"
+    creategroup: "§e/gs creategroup <n> <prefix>"
+    deletegroup: "§e/gs deletegroup <n>"
     setpermission: "§e/gs setpermission <group> <permission> <true/false>"
-    adduser: "§e/gs adduser <player> <group>"
+    adduser: "§e/gs adduser <player> <group> [duration]"
+    playerinfo: "§e/gs playerinfo <player> - Check player's group and expiry"
 
   # General Messages
   unknown-subcommand: "§cUnknown subcommand: {subcommand}"
@@ -13,7 +14,7 @@ messages:
 
   # Create Group Command
   creategroup:
-    usage: "§eUsage: /gs creategroup <name> <prefix>"
+    usage: "§eUsage: /gs creategroup <n> <prefix>"
     too-many-args: "§cOnly 2 arguments allowed!"
     already-exists: "§cGroup '{group}' already exists!"
     success: "§aGroup '{group}' created successfully!"
@@ -21,7 +22,7 @@ messages:
 
   # Delete Group Command
   deletegroup:
-    usage: "§eUsage: /gs deletegroup <name>"
+    usage: "§eUsage: /gs deletegroup <n>"
     not-found: "§cGroup '{group}' doesn't exist!"
     failed: "§cGroup '{group}' could not be deleted or not found"
     success: "§aGroup '{group}' deleted successfully!"
@@ -29,9 +30,30 @@ messages:
 
   # Add User Command
   adduser:
-    usage: "§eUsage: /gs adduser <player> <group>"
+    usage: "§eUsage: /gs adduser <player> <group> [duration]"
+    duration-examples: "§7Duration examples: 4d, 1mo2w, 7d12h, permanent"
     player-not-found: "§cPlayer '{player}' not found!"
     group-not-found: "§cGroup '{group}' doesn't exist!"
-    success: "§a{player} has been added to {group}!"
-    success-target: "§aYou've been added to the {group} group!"
+    invalid-duration: "§cInvalid duration format: {error}"
+    success: "§a{player} added to {group}!"
+    duration-permanent: "§7Duration: Permanent"
+    duration-temporary: "§7Duration: {duration}"
+    expires-at: "§7Expires: {date}"
+    player-offline: "§7(Player is offline - changes will apply on next login)"
     error: "§cError adding user: {error}"
+
+  # Player Info Command
+  playerinfo:
+    usage: "§eUsage: /gs playerinfo <player>"
+    player-not-found: "§cPlayer '{player}' not found!"
+    header: "§6=== Player Info: {player} ==="
+    uuid: "§7UUID: §f{uuid}"
+    group: "§7Group: §f{group}"
+    prefix: "§7Prefix: {prefix}{player}"
+    duration-permanent: "§7Duration: §aPermanent"
+    duration-expired: "§7Duration: §cExpired (will be removed on next check)"
+    time-remaining: "§7Time Remaining: §e{time}"
+    expires: "§7Expires: §f{date}"
+    status-online: "§7Status: §aOnline"
+    status-offline: "§7Status: §7Offline"
+    error: "§cError getting player info: {error}"

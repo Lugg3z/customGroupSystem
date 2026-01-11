@@ -2,6 +2,7 @@ package at.lukas;
 
 import at.lukas.commands.GroupSystemCommand;
 import at.lukas.commands.GroupSystemTabCompleter;
+import at.lukas.misc.ExpiryCheckTask;
 import at.lukas.misc.MotdListener;
 import at.lukas.misc.SignListener;
 import at.lukas.player.DatabaseManager;
@@ -11,6 +12,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -23,6 +25,8 @@ public class CustomGroupSystem extends JavaPlugin {
     private HikariDataSource dataSource;
     private DatabaseManager dbManager;
     private PermissionManager permissionManager;
+
+    private BukkitTask expiryCheckTask;
 
     @Override
     public void onEnable() {
@@ -40,11 +44,18 @@ public class CustomGroupSystem extends JavaPlugin {
 
         registerEvents();
 
+        startExpiryCheckTask();
+
         logger.info("CustomGroupSystem enabled successfully!");
     }
 
     @Override
     public void onDisable() {
+        if (expiryCheckTask != null) {
+            expiryCheckTask.cancel();
+            logger.info("Expiry check task cancelled.");
+        }
+
         closeDatabase();
         logger.info("CustomGroupSystem disabled.");
     }
@@ -166,5 +177,13 @@ public class CustomGroupSystem extends JavaPlugin {
 
     public DatabaseManager getDatabaseManager() {
         return dbManager;
+    }
+
+    private void startExpiryCheckTask() {
+        // Check abgelaufene Gruppen alle 10s
+        expiryCheckTask = new ExpiryCheckTask(this, dbManager)
+                .runTaskTimerAsynchronously(this, 200L, 200L);
+
+        logger.info("Expiry check task started (runs every 5 minutes)");
     }
 }

@@ -1,5 +1,6 @@
 package at.lukas.commands;
 
+import at.lukas.misc.DurationParser;
 import at.lukas.player.DatabaseManager;
 import at.lukas.player.PermissionManager;
 import at.lukas.player.PlayerHelper;
@@ -17,6 +18,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.sql.SQLException;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -81,6 +83,7 @@ public class GroupSystemCommand implements CommandExecutor {
             sender.sendMessage(getMessage("help.deletegroup"));
             sender.sendMessage(getMessage("help.setpermission"));
             sender.sendMessage(getMessage("help.adduser"));
+            sender.sendMessage(getMessage("help.playerinfo"));
             return true;
         }
 
@@ -92,6 +95,7 @@ public class GroupSystemCommand implements CommandExecutor {
             case "setpermission" -> handleSetPermission(sender, args);
             */
             case "adduser" -> handleAddUser(sender, args);
+            case "playerinfo", "pinfo" -> handlePlayerInfo(sender, args);
             default -> {
                 sender.sendMessage(getMessage("unknown-subcommand", "subcommand", subcommand));
                 yield true;
@@ -170,22 +174,40 @@ public class GroupSystemCommand implements CommandExecutor {
         return true;
     }
 
-    // /gs adduser <player> <group>
+    // /gs adduser <player> <group> [duration]
     private boolean handleAddUser(CommandSender sender, String[] args) {
         if (!sender.hasPermission("groupsystem.admin.adduser")) {
             sender.sendMessage(getMessage("no-permission"));
             return true;
         }
 
-        if (args.length != 3) {
+        if (args.length < 3) {
             sender.sendMessage(getMessage("adduser.usage"));
+            sender.sendMessage(getMessage("adduser.duration-examples"));
             return true;
         }
 
         String playerName = args[1];
-        String groupName = args[2];
+        String groupName = args[2].toLowerCase();
 
-        // Get player (online or offline)
+        Long expiryMillis = null;
+        String durationStr = null;
+
+        if (args.length >= 4) {
+            durationStr = args[3];
+
+            try {
+                Long durationMillis = DurationParser.parse(durationStr);
+                if (durationMillis != null) {
+                    expiryMillis = DurationParser.getExpiryTimestamp(durationMillis);
+                }
+            } catch (IllegalArgumentException e) {
+                sender.sendMessage(getMessage("adduser.invalid-duration", "error", e.getMessage()));
+                sender.sendMessage(getMessage("adduser.duration-examples"));
+                return true;
+            }
+        }
+
         Player target = Bukkit.getPlayer(playerName);
         UUID uuid;
 
@@ -206,19 +228,97 @@ public class GroupSystemCommand implements CommandExecutor {
                 return true;
             }
 
-            dbManager.setUserGroup(uuid, groupName);
+            dbManager.setUserGroup(uuid, groupName, expiryMillis);
 
             sender.sendMessage(getMessage("adduser.success", "player", playerName, "group", groupName));
 
-            // Refresh permissions and apply prefix if player is online
-            if (target != null) {
-                PlayerHelper.applyPrefix(target, dbManager);
-                target.sendMessage(getMessage("adduser.success-target", "group", groupName));
+            if (expiryMillis == null) {
+                sender.sendMessage(getMessage("adduser.duration-permanent"));
+            } else {
+                long remaining = expiryMillis - System.currentTimeMillis();
+                String formatted = DurationParser.formatDuration(remaining);
+                sender.sendMessage(getMessage("adduser.duration-temporary", "duration", formatted));
+
+                String date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(expiryMillis));
+                sender.sendMessage(getMessage("adduser.expires-at", "date", date));
             }
 
-        } catch (Exception e) {
+            if (target != null) {
+                PlayerHelper.applyPrefix(target, dbManager);
+            } else {
+                sender.sendMessage(getMessage("adduser.player-offline"));
+            }
+
+        } catch (SQLException e) {
             sender.sendMessage(getMessage("adduser.error", "error", e.getMessage()));
-            logger.severe("Error adding user: " + e.getMessage());
+            plugin.getLogger().severe("Error adding user: " + e.getMessage());
+        }
+
+        return true;
+    }
+
+    // /gs playerinfo <player>
+    private boolean handlePlayerInfo(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("groupsystem.admin.playerinfo")) {
+            sender.sendMessage(getMessage("no-permission"));
+            return true;
+        }
+
+        if (args.length < 2) {
+            sender.sendMessage(getMessage("playerinfo.usage"));
+            return true;
+        }
+
+        String playerName = args[1];
+
+        Player target = Bukkit.getPlayer(playerName);
+        UUID uuid;
+        String displayName;
+
+        if (target != null) {
+            uuid = target.getUniqueId();
+            displayName = target.getName();
+        } else {
+            OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerName);
+            if (!offlinePlayer.hasPlayedBefore()) {
+                sender.sendMessage(getMessage("playerinfo.player-not-found", "player", playerName));
+                return true;
+            }
+            uuid = offlinePlayer.getUniqueId();
+            displayName = offlinePlayer.getName() != null ? offlinePlayer.getName() : playerName;
+        }
+
+        try {
+            String groupName = dbManager.getPlayerGroup(uuid);
+            String prefix = dbManager.getPlayerPrefix(uuid);
+            Long expiryMillis = dbManager.getPlayerGroupExpiry(uuid);
+
+            sender.sendMessage(getMessage("playerinfo.header", "player", displayName));
+            sender.sendMessage(getMessage("playerinfo.uuid", "uuid", uuid.toString()));
+            sender.sendMessage(getMessage("playerinfo.group", "group", groupName));
+            sender.sendMessage(getMessage("playerinfo.prefix", "prefix", prefix, "player", displayName));
+
+            if (expiryMillis == null) {
+                sender.sendMessage(getMessage("playerinfo.duration-permanent"));
+            } else {
+                long remaining = expiryMillis - System.currentTimeMillis();
+
+                if (remaining <= 0) {
+                    sender.sendMessage(getMessage("playerinfo.duration-expired"));
+                } else {
+                    String formatted = DurationParser.formatDuration(remaining);
+                    sender.sendMessage(getMessage("playerinfo.time-remaining", "time", formatted));
+
+                    String date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(expiryMillis));
+                    sender.sendMessage(getMessage("playerinfo.expires", "date", date));
+                }
+            }
+
+            sender.sendMessage(target != null ? getMessage("playerinfo.status-online") : getMessage("playerinfo.status-offline"));
+
+        } catch (SQLException e) {
+            sender.sendMessage(getMessage("playerinfo.error", "error", e.getMessage()));
+            plugin.getLogger().severe("Error getting player info: " + e.getMessage());
         }
 
         return true;

@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-//Von Claude mit Basis von meinem Code
 public class GroupSystemTabCompleter implements TabCompleter {
 
     private final DatabaseManager dbManager;
@@ -27,11 +26,14 @@ public class GroupSystemTabCompleter implements TabCompleter {
         List<String> completions = new ArrayList<>();
 
         if (args.length == 1) {
+            // Subcommands
             List<String> subcommands = Arrays.asList(
                     "creategroup",
                     "deletegroup",
                     "setpermission",
-                    "adduser"
+                    "adduser",
+                    "playerinfo",
+                    "pinfo"
             );
 
             return subcommands.stream()
@@ -44,8 +46,8 @@ public class GroupSystemTabCompleter implements TabCompleter {
 
             return switch (subcommand) {
                 case "deletegroup", "setpermission" -> getGroupCompletions(args[1]);
-                case "adduser" -> getPlayerCompletions(args[1]);
-                case "creategroup" -> List.of("<name>");
+                case "adduser", "playerinfo", "pinfo" -> getPlayerCompletions(args[1]);
+                case "creategroup" -> List.of("<n>");
                 default -> completions;
             };
         }
@@ -69,6 +71,10 @@ public class GroupSystemTabCompleter implements TabCompleter {
                         .filter(val -> val.startsWith(args[3].toLowerCase()))
                         .collect(Collectors.toList());
             }
+
+            if (subcommand.equals("adduser")) {
+                return getDurationSuggestions(args[3]);
+            }
         }
 
         return completions;
@@ -89,6 +95,30 @@ public class GroupSystemTabCompleter implements TabCompleter {
         return Bukkit.getOnlinePlayers().stream()
                 .map(Player::getName)
                 .filter(name -> name.toLowerCase().startsWith(partial.toLowerCase()))
+                .collect(Collectors.toList());
+    }
+
+    private List<String> getDurationSuggestions(String partial) {
+        List<String> suggestions = Arrays.asList(
+                "1h",       // 1 hour
+                "3h",       // 3 hours
+                "12h",      // 12 hours
+                "1d",       // 1 day
+                "3d",       // 3 days
+                "7d",       // 1 week
+                "14d",      // 2 weeks
+                "1mo",      // 1 month
+                "3mo",      // 3 months
+                "permanent",
+
+                "1d12h",    // 1 day 12 hours
+                "7d12h",    // 1 week 12 hours
+                "1mo2w",    // 1 month 2 weeks
+                "2w3d"      // 2 weeks 3 days
+        );
+
+        return suggestions.stream()
+                .filter(s -> s.toLowerCase().startsWith(partial.toLowerCase()))
                 .collect(Collectors.toList());
     }
 }

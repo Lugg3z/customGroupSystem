@@ -3,6 +3,7 @@ package at.lukas.player;
 import at.lukas.CustomGroupSystem;
 import at.lukas.model.Group;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -176,28 +177,53 @@ public class DatabaseManager {
     }
 
     public void setUserGroup(UUID uuid, String groupName) throws SQLException {
+        setUserGroup(uuid, groupName, null);
+    }
+
+    public void setUserGroup(UUID uuid, String groupName, Long expiryMillis) throws SQLException {
         if (!groupExists(groupName)) {
             throw new IllegalArgumentException("Group does not exist: " + groupName);
         }
 
         Group group = groupCache.get(groupName.toLowerCase());
 
-        String query = """
-                REPLACE INTO player_groups (uuid, group_id, assigned_at)
-                VALUES (?, ?, NOW())
-                """;
+        String query = getQuery(expiryMillis);
 
         try (Connection conn = plugin.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
 
             stmt.setString(1, uuid.toString());
             stmt.setInt(2, group.getId());
+
+            if (expiryMillis != null) {
+                stmt.setLong(3, expiryMillis / 1000); // Convert to seconds for MySQL
+            }
+
             stmt.executeUpdate();
 
             playerGroupCache.put(uuid, groupName.toLowerCase());
 
-            plugin.getLogger().info("Set group for " + uuid + " to " + groupName);
+            plugin.getLogger().info("Set group for " + uuid + " to " + groupName +
+                    (expiryMillis == null ? " (permanent)" : " (expires: " + new java.util.Date(expiryMillis) + ")"));
         }
+    }
+
+    private static @NotNull String getQuery(Long expiryMillis) {
+        String query;
+        if (expiryMillis == null) {
+            // Permanent
+            query = """
+                    REPLACE INTO player_groups (uuid, group_id, expiry, assigned_at)
+                    VALUES (?, ?, NULL, NOW())
+                    """;
+        } else {
+            // Temporary with expiry
+            query = """
+                    REPLACE INTO player_groups (uuid, group_id, expiry, assigned_at)
+                    VALUES (?, ?, FROM_UNIXTIME(?), NOW())
+                    """;
+        }
+        return query;
     }
 
     public void unloadPlayer(UUID uuid) {
@@ -215,5 +241,64 @@ public class DatabaseManager {
     public String getCacheStats() {
         return String.format("Groups cached: %d, Players cached: %d",
                 groupCache.size(), playerGroupCache.size());
+    }
+
+    public Long getPlayerGroupExpiry(UUID uuid) throws SQLException {
+        String query = """
+                SELECT UNIX_TIMESTAMP(expiry) * 1000 as expiry_millis
+                FROM player_groups
+                WHERE uuid = ?
+                """;
+
+        try (Connection conn = plugin.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, uuid.toString());
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                long expiryMillis = rs.getLong("expiry_millis");
+                return rs.wasNull() ? null : expiryMillis;
+            }
+
+            return null;
+        }
+    }
+
+    public int removeExpiredGroups() throws SQLException {
+        String query = """
+                SELECT pg.uuid, g.name
+                FROM player_groups pg
+                JOIN group_data g ON pg.group_id = g.id
+                WHERE pg.expiry IS NOT NULL AND pg.expiry <= NOW()
+                """;
+
+        List<UUID> expiredPlayers = new ArrayList<>();
+
+        try (Connection conn = plugin.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                UUID uuid = UUID.fromString(rs.getString("uuid"));
+                String groupName = rs.getString("name");
+                expiredPlayers.add(uuid);
+
+                plugin.getLogger().info("Group expired for " + uuid + " (was: " + groupName + ")");
+            }
+        }
+
+        // Silently reset to default
+        for (UUID uuid : expiredPlayers) {
+            setUserGroup(uuid, "default", null);
+
+            // Refresh prefix if online (no messages, just visual update)
+            Player player = plugin.getServer().getPlayer(uuid);
+            if (player != null && player.isOnline()) {
+                PlayerHelper.applyPrefix(player, this);
+            }
+        }
+
+        return expiredPlayers.size();
     }
 }
