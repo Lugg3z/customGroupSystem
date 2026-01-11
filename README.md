@@ -93,9 +93,6 @@ messages:
 /gs creategroup admin &c[Admin]&r
 /gs creategroup moderator &b[Mod]&r
 ```
-
-**Ergebnis:** Gruppe wird erstellt und kann sofort verwendet werden.
-
 ---
 
 ### Spieler zu Gruppe hinzufügen
@@ -152,12 +149,6 @@ messages:
 # Kurze Version:
 /gs setperm vip essentials.heal true
 ```
-
-**Ergebnis:**
-- Permission wird zur Gruppe hinzugefügt
-- Alle Spieler in dieser Gruppe erhalten die Permission sofort
-- Neue Spieler in der Gruppe erhalten sie automatisch beim Join
-
 ---
 
 ### Permission von Gruppe entfernen
@@ -166,11 +157,6 @@ messages:
 /gs setpermission vip essentials.fly false
 /gs setperm admin worldedit.* false
 ```
-
-**Ergebnis:**
-- Permission wird von der Gruppe entfernt
-- Alle Spieler in dieser Gruppe verlieren die Permission sofort
-
 ---
 
 ### Alle Permissions einer Gruppe anzeigen
