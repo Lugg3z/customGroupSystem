@@ -69,43 +69,43 @@ public class DurationParser {
         }
 
         long seconds = millis / 1000;
+
+        long months = seconds / (30L * 24 * 60 * 60);
+        seconds %= (30L * 24 * 60 * 60);
+
+        long weeks = seconds / (7L * 24 * 60 * 60);
+        seconds %= (7L * 24 * 60 * 60);
+
+        long days = seconds / (24L * 60 * 60);
+        seconds %= (24L * 60 * 60);
+
+        long hours = seconds / (60L * 60);
+        seconds %= (60L * 60);
+
         long minutes = seconds / 60;
-        long hours = minutes / 60;
-        long days = hours / 24;
-        long weeks = days / 7;
-        long months = days / 30;
+        seconds %= 60;
 
         StringBuilder result = new StringBuilder();
 
         if (months > 0) {
             result.append(months).append(" month").append(months > 1 ? "s" : "");
-            days -= months * 30;
         }
-
         if (weeks > 0) {
             if (!result.isEmpty()) result.append(", ");
             result.append(weeks).append(" week").append(weeks > 1 ? "s" : "");
-            days -= weeks * 7;
         }
-
         if (days > 0) {
             if (!result.isEmpty()) result.append(", ");
             result.append(days).append(" day").append(days > 1 ? "s" : "");
         }
-
-        hours %= 24;
         if (hours > 0) {
             if (!result.isEmpty()) result.append(", ");
             result.append(hours).append(" hour").append(hours > 1 ? "s" : "");
         }
-
-        minutes %= 60;
         if (minutes > 0) {
             if (!result.isEmpty()) result.append(", ");
             result.append(minutes).append(" minute").append(minutes > 1 ? "s" : "");
         }
-
-        seconds %= 60;
         if (seconds > 0) {
             if (!result.isEmpty()) result.append(", ");
             result.append(seconds).append(" second").append(seconds > 1 ? "s" : "");
@@ -113,6 +113,7 @@ public class DurationParser {
 
         return result.toString();
     }
+
 
     public static long getExpiryTimestamp(long durationMillis) {
         return System.currentTimeMillis() + durationMillis;

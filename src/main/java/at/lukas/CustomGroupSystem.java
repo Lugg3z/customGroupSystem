@@ -72,7 +72,7 @@ public class CustomGroupSystem extends JavaPlugin {
         }
     }
 
-    private void connectToDatabase() throws SQLException {
+    protected void connectToDatabase() throws SQLException {
         logger.info("Connecting to database...");
 
         FileConfiguration config = getConfig();
